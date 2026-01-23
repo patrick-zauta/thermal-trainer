@@ -1,7 +1,5 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-    server: {
-        port: 5173
-    }
+    base: "/thermal-trainer/", // genau dein Repo Name mit Slashes
 });
