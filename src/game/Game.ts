@@ -1,3 +1,4 @@
+import type { Keybindings, ModeId, RunSummary, ThermalVisibility } from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
 import { Input } from "./Input";
@@ -5,6 +6,16 @@ import { Map, WorldTransform } from "./Map";
 import { Physics, Telemetry } from "./Physics";
 
 const MAX_DT = 0.05;
+const TARGET_RADIUS = 50;
+const TARGET_CENTER = { x: 1050, y: 600 };
+
+type GameConfig = {
+    mode: ModeId;
+    thermalVisibility: ThermalVisibility;
+    keybindings: Keybindings;
+    audioEnabled: boolean;
+    masterVolume: number;
+};
 
 export class Game {
     private readonly canvas: HTMLCanvasElement;
@@ -14,16 +25,23 @@ export class Game {
     private readonly physics: Physics;
     private readonly hud: Hud;
     private readonly audio: AudioVario;
-    private lastTime = 0;
-    private time = 0;
-    private paused = false;
-    private timeScale = 1;
     private telemetry: Telemetry;
     private transform: WorldTransform;
     private readonly startX: number;
     private readonly startY: number;
+    private readonly mode: ModeId;
+    private readonly thermalVisibility: ThermalVisibility;
+    private pauseCallback: ((paused: boolean) => void) | null = null;
+    private paused = false;
+    private debugEnabled = false;
+    private time = 0;
+    private lastTime = 0;
+    private frameId: number | null = null;
+    private stats = createStats();
+    private pathAccumulator = 0;
+    private lastStall = false;
 
-    public constructor(canvas: HTMLCanvasElement) {
+    public constructor(canvas: HTMLCanvasElement, config: GameConfig) {
         this.canvas = canvas;
         const context = canvas.getContext("2d");
         if (!context) {
@@ -37,63 +55,128 @@ export class Game {
         this.physics = new Physics(this.startX, this.startY);
         this.hud = new Hud();
         this.audio = new AudioVario();
+        this.audio.setEnabled(config.audioEnabled);
+        this.audio.setMasterVolume(config.masterVolume);
 
         this.telemetry = this.physics.telemetry;
-        this.transform = { scale: 1, a: 1, b: 0, c: 0, d: 1, offsetX: 0, offsetY: 0 };
+        this.transform = { a: 1, b: 0, c: 0, d: 1, offsetX: 0, offsetY: 0 };
 
-        this.input = new Input({
-            onPauseToggle: () => this.togglePause(),
-            onReset: () => this.reset(),
-            onFirstInput: () => this.audio.ensureStarted(),
-        });
+        this.mode = config.mode;
+        this.thermalVisibility = config.thermalVisibility;
+
+        this.input = new Input(
+            {
+                onPauseToggle: () => this.togglePause(),
+                onDebugToggle: () => this.toggleDebug(),
+                onFirstInput: () => this.audio.ensureStarted(),
+            },
+            config.keybindings,
+        );
 
         window.addEventListener("resize", this.handleResize);
         this.handleResize();
+        this.resetStats();
     }
 
     public start(): void {
-        requestAnimationFrame(this.loop);
+        this.frameId = requestAnimationFrame(this.loop);
     }
 
-    public setTimeScale(scale: number): void {
-        this.timeScale = Number.isFinite(scale) ? Math.max(0.1, scale) : 1;
+    public stop(): void {
+        if (this.frameId !== null) {
+            cancelAnimationFrame(this.frameId);
+            this.frameId = null;
+        }
+        this.input.dispose();
+        window.removeEventListener("resize", this.handleResize);
+        this.audio.stop();
+        this.audio.dispose();
+    }
+
+    public reset(): void {
+        this.paused = false;
+        this.input.resetTargets();
+        this.physics.reset(this.startX, this.startY);
+        this.telemetry = this.physics.telemetry;
+        this.time = 0;
+        this.lastTime = 0;
+        this.resetStats();
+    }
+
+    public setPaused(paused: boolean): void {
+        this.paused = paused;
+        if (this.pauseCallback) {
+            this.pauseCallback(paused);
+        }
+    }
+
+    public setPauseCallback(callback: (paused: boolean) => void): void {
+        this.pauseCallback = callback;
+    }
+
+    public setKeybindings(keybindings: Keybindings): void {
+        this.input.setKeybindings(keybindings);
+    }
+
+    public setAudioEnabled(enabled: boolean): void {
+        this.audio.setEnabled(enabled);
+    }
+
+    public setMasterVolume(volume: number): void {
+        this.audio.setMasterVolume(volume);
+    }
+
+    public getSummary(): RunSummary {
+        const endAltitude = this.physics.state.altitudeM;
+        const netAltitude = endAltitude - this.stats.startAltitudeM;
+        const avgClimb = this.stats.timeClimbSec > 0 ? this.stats.climbSum / this.stats.timeClimbSec : 0;
+        return {
+            mode: this.mode,
+            durationSec: this.stats.durationSec,
+            startAltitudeM: this.stats.startAltitudeM,
+            endAltitudeM: endAltitude,
+            maxAltitudeM: this.stats.maxAltitudeM,
+            netAltitudeM: netAltitude,
+            avgClimbMps: avgClimb,
+            timeClimbSec: this.stats.timeClimbSec,
+            timeSinkSec: this.stats.timeSinkSec,
+            stallCount: this.stats.stallCount,
+            targetReached: this.stats.targetReached,
+            samples: this.stats.samples,
+        };
     }
 
     private loop = (timestamp: number): void => {
         const dtRaw = (timestamp - this.lastTime) / 1000;
-        const dtBase = this.lastTime === 0 ? 0 : Math.min(dtRaw, MAX_DT);
+        const dt = this.lastTime === 0 ? 0 : Math.min(dtRaw, MAX_DT);
         this.lastTime = timestamp;
-        const simDt = dtBase * this.timeScale;
-        this.time += simDt;
-
-        let remaining = simDt;
-        while (remaining > 0) {
-            const step = Math.min(remaining, MAX_DT);
-            this.input.update(step);
-
-            if (!this.paused) {
-                this.telemetry = this.physics.step(
-                    step,
-                    {
-                        leftTarget: this.input.leftTarget,
-                        rightTarget: this.input.rightTarget,
-                        speedbarActive: this.input.speedbarActive,
-                    },
-                    this.map,
-                );
-                this.audio.update(this.telemetry.vario, step);
-            } else {
-                this.audio.update(0, step);
-            }
-
-            remaining -= step;
+        if (!this.paused) {
+            this.time += dt;
         }
 
-        this.render();
-        requestAnimationFrame(this.loop);
+        if (!this.paused && dt > 0) {
+            this.input.update(dt);
+            this.telemetry = this.physics.step(
+                dt,
+                {
+                    leftTarget: this.input.leftTarget,
+                    rightTarget: this.input.rightTarget,
+                    speedbarTarget: this.input.speedbarTarget,
+                },
+                this.map,
+                this.time,
+            );
+            this.audio.update(this.telemetry.vario, dt);
+            this.updateStats(dt);
+        } else {
+            this.audio.update(0, dt);
+        }
+
+        this.render(dt);
+        this.frameId = requestAnimationFrame(this.loop);
     };
 
-    private render(): void {
+    private render(dt: number): void {
         const { width, height } = this.canvas;
         this.transform = computeTransform(
             width,
@@ -106,19 +189,44 @@ export class Game {
         );
 
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.ctx.fillStyle = "#cfcfcf";
+        this.ctx.fillStyle = "#ffffff";
         this.ctx.fillRect(0, 0, width, height);
 
-        this.map.render(this.ctx, this.transform);
+        this.map.render(this.ctx, this.transform, {
+            visibility: this.thermalVisibility,
+            showLabels: this.thermalVisibility === "visible",
+        });
+        if (this.mode === "training") {
+            this.renderTarget();
+        }
         this.renderGlider();
-        this.hud.render(this.ctx, width, height, this.time, {
+
+        this.hud.render(this.ctx, width, height, {
             altitudeM: this.physics.state.altitudeM,
             telemetry: this.telemetry,
             leftBrake: this.physics.state.leftBrake,
             rightBrake: this.physics.state.rightBrake,
+            leftBrakeTarget: this.input.leftTarget,
+            rightBrakeTarget: this.input.rightTarget,
             paused: this.paused,
             stall: this.telemetry.stall,
-            speedbarActive: this.physics.state.speedbarActive,
+            speedbarTarget: this.input.speedbarTarget,
+            targetReached: this.stats.targetReached,
+            debug: this.debugEnabled,
+            debugMetrics: {
+                dt,
+                fps: dt > 0 ? 1 / dt : 0,
+                verticalAir: this.telemetry.verticalAir,
+                sinkPolar: this.telemetry.sinkPolar,
+                brakePenalty: this.telemetry.brakePenalty,
+                sinkGlider: this.telemetry.sinkGlider,
+                vario: this.telemetry.vario,
+                speedbarAmount: this.telemetry.speedbarAmount,
+                airspeedKmh: this.telemetry.airspeedKmh,
+                totalBrake: this.telemetry.totalBrake,
+                diffBrake: this.telemetry.diffBrake,
+                turnRate: this.telemetry.turnRate,
+            },
         });
     }
 
@@ -146,15 +254,28 @@ export class Game {
         this.ctx.restore();
     }
 
-    private togglePause(): void {
-        this.paused = !this.paused;
+    private renderTarget(): void {
+        const { a, b, c, d, offsetX, offsetY } = this.transform;
+        const x = a * TARGET_CENTER.x + c * TARGET_CENTER.y + offsetX;
+        const y = b * TARGET_CENTER.x + d * TARGET_CENTER.y + offsetY;
+        const scale = Math.hypot(a, b);
+
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.strokeStyle = this.stats.targetReached ? "#2a6b2a" : "#5a5a5a";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, TARGET_RADIUS * scale, 0, Math.PI * 2);
+        this.ctx.stroke();
+        this.ctx.restore();
     }
 
-    private reset(): void {
-        this.paused = false;
-        this.input.resetTargets();
-        this.physics.reset(this.startX, this.startY);
-        this.telemetry = this.physics.telemetry;
+    private togglePause(): void {
+        this.setPaused(!this.paused);
+    }
+
+    private toggleDebug(): void {
+        this.debugEnabled = !this.debugEnabled;
     }
 
     private handleResize = (): void => {
@@ -163,6 +284,55 @@ export class Game {
         this.canvas.width = Math.max(1, Math.floor(rect.width * ratio));
         this.canvas.height = Math.max(1, Math.floor(rect.height * ratio));
     };
+
+    private resetStats(): void {
+        this.stats = createStats();
+        this.stats.startAltitudeM = this.physics.state.altitudeM;
+        this.stats.maxAltitudeM = this.physics.state.altitudeM;
+        this.lastStall = false;
+        this.pathAccumulator = 0;
+    }
+
+    private updateStats(dt: number): void {
+        this.stats.durationSec += dt;
+        const altitude = this.physics.state.altitudeM;
+        if (altitude > this.stats.maxAltitudeM) {
+            this.stats.maxAltitudeM = altitude;
+        }
+
+        const vario = this.telemetry.vario;
+        if (vario > 0.2) {
+            this.stats.timeClimbSec += dt;
+            this.stats.climbSum += vario * dt;
+        } else if (vario < -1.1) {
+            this.stats.timeSinkSec += dt;
+        }
+
+        if (this.telemetry.stall && !this.lastStall) {
+            this.stats.stallCount += 1;
+        }
+        this.lastStall = this.telemetry.stall;
+
+        if (this.mode === "training" && !this.stats.targetReached) {
+            const dx = this.physics.state.x - TARGET_CENTER.x;
+            const dy = this.physics.state.y - TARGET_CENTER.y;
+            if (Math.hypot(dx, dy) <= TARGET_RADIUS) {
+                this.stats.targetReached = true;
+            }
+        }
+
+        this.pathAccumulator += dt;
+        while (this.pathAccumulator >= 0.2) {
+            this.stats.samples.push({
+                timeSec: this.stats.durationSec,
+                x: this.physics.state.x,
+                y: this.physics.state.y,
+                vario: this.telemetry.vario,
+                altitudeM: this.physics.state.altitudeM,
+            });
+            this.pathAccumulator -= 0.2;
+        }
+    }
 }
 
 const computeTransform = (
@@ -184,5 +354,17 @@ const computeTransform = (
     const d = scale * cos;
     const offsetX = canvasWidth / 2 - (a * focusX + c * focusY);
     const offsetY = canvasHeight / 2 - (b * focusX + d * focusY);
-    return { scale, a, b, c, d, offsetX, offsetY };
+    return { a, b, c, d, offsetX, offsetY };
 };
+
+const createStats = () => ({
+    durationSec: 0,
+    startAltitudeM: 0,
+    maxAltitudeM: 0,
+    timeClimbSec: 0,
+    timeSinkSec: 0,
+    climbSum: 0,
+    stallCount: 0,
+    targetReached: false,
+    samples: [] as RunSummary["samples"],
+});
