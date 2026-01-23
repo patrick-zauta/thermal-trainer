@@ -3,6 +3,10 @@ import { sinkZones, thermals, worldHeight, worldWidth } from "../data/mvpMap";
 
 export type WorldTransform = {
     scale: number;
+    a: number;
+    b: number;
+    c: number;
+    d: number;
     offsetX: number;
     offsetY: number;
 };
@@ -45,10 +49,10 @@ export class Map {
     public render(ctx: CanvasRenderingContext2D, transform: WorldTransform): void {
         ctx.save();
         ctx.setTransform(
-            transform.scale,
-            0,
-            0,
-            transform.scale,
+            transform.a,
+            transform.b,
+            transform.c,
+            transform.d,
             transform.offsetX,
             transform.offsetY,
         );

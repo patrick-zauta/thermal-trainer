@@ -24,8 +24,8 @@ export class Input {
     public update(dt: number): void {
         const leftIncrease = this.isPressed("KeyA");
         const leftDecrease = this.isPressed("KeyQ");
-        const rightIncrease = this.isPressed("KeyP");
-        const rightDecrease = this.isPressed("KeyL");
+        const rightIncrease = this.isPressed("KeyL");
+        const rightDecrease = this.isPressed("KeyP");
 
         const leftDelta = (leftIncrease ? 1 : 0) - (leftDecrease ? 1 : 0);
         const rightDelta = (rightIncrease ? 1 : 0) - (rightDecrease ? 1 : 0);

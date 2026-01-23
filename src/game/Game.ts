@@ -17,6 +17,7 @@ export class Game {
     private lastTime = 0;
     private time = 0;
     private paused = false;
+    private timeScale = 1;
     private telemetry: Telemetry;
     private transform: WorldTransform;
     private readonly startX: number;
@@ -38,7 +39,7 @@ export class Game {
         this.audio = new AudioVario();
 
         this.telemetry = this.physics.telemetry;
-        this.transform = { scale: 1, offsetX: 0, offsetY: 0 };
+        this.transform = { scale: 1, a: 1, b: 0, c: 0, d: 1, offsetX: 0, offsetY: 0 };
 
         this.input = new Input({
             onPauseToggle: () => this.togglePause(),
@@ -54,27 +55,38 @@ export class Game {
         requestAnimationFrame(this.loop);
     }
 
+    public setTimeScale(scale: number): void {
+        this.timeScale = Number.isFinite(scale) ? Math.max(0.1, scale) : 1;
+    }
+
     private loop = (timestamp: number): void => {
         const dtRaw = (timestamp - this.lastTime) / 1000;
-        const dt = this.lastTime === 0 ? 0 : Math.min(dtRaw, MAX_DT);
+        const dtBase = this.lastTime === 0 ? 0 : Math.min(dtRaw, MAX_DT);
         this.lastTime = timestamp;
-        this.time += dt;
+        const simDt = dtBase * this.timeScale;
+        this.time += simDt;
 
-        this.input.update(dt);
+        let remaining = simDt;
+        while (remaining > 0) {
+            const step = Math.min(remaining, MAX_DT);
+            this.input.update(step);
 
-        if (!this.paused) {
-            this.telemetry = this.physics.step(
-                dt,
-                {
-                    leftTarget: this.input.leftTarget,
-                    rightTarget: this.input.rightTarget,
-                    speedbarActive: this.input.speedbarActive,
-                },
-                this.map,
-            );
-            this.audio.update(this.telemetry.vario, dt);
-        } else {
-            this.audio.update(0, dt);
+            if (!this.paused) {
+                this.telemetry = this.physics.step(
+                    step,
+                    {
+                        leftTarget: this.input.leftTarget,
+                        rightTarget: this.input.rightTarget,
+                        speedbarActive: this.input.speedbarActive,
+                    },
+                    this.map,
+                );
+                this.audio.update(this.telemetry.vario, step);
+            } else {
+                this.audio.update(0, step);
+            }
+
+            remaining -= step;
         }
 
         this.render();
@@ -83,7 +95,15 @@ export class Game {
 
     private render(): void {
         const { width, height } = this.canvas;
-        this.transform = computeTransform(width, height, this.map.worldWidth, this.map.worldHeight);
+        this.transform = computeTransform(
+            width,
+            height,
+            this.map.worldWidth,
+            this.map.worldHeight,
+            this.physics.state.x,
+            this.physics.state.y,
+            this.physics.state.headingRad,
+        );
 
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.fillStyle = "#cfcfcf";
@@ -103,20 +123,23 @@ export class Game {
     }
 
     private renderGlider(): void {
-        const { scale, offsetX, offsetY } = this.transform;
         this.ctx.save();
-        this.ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-        this.ctx.translate(this.physics.state.x, this.physics.state.y);
-        this.ctx.rotate(this.physics.state.headingRad);
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+
+        const wingSpan = 52;
+        const wingChord = 14;
+        const halfSpan = wingSpan / 2;
+        const halfChord = wingChord / 2;
 
         this.ctx.fillStyle = "#303030";
-        this.ctx.fillRect(-10, -5, 20, 10);
+        this.ctx.fillRect(-halfSpan, -halfChord, wingSpan, wingChord);
 
         this.ctx.fillStyle = "#111111";
         this.ctx.beginPath();
-        this.ctx.moveTo(10, 0);
-        this.ctx.lineTo(18, -5);
-        this.ctx.lineTo(18, 5);
+        this.ctx.moveTo(0, -halfChord - 10);
+        this.ctx.lineTo(6, -halfChord);
+        this.ctx.lineTo(-6, -halfChord);
         this.ctx.closePath();
         this.ctx.fill();
 
@@ -147,9 +170,19 @@ const computeTransform = (
     canvasHeight: number,
     worldWidth: number,
     worldHeight: number,
+    focusX: number,
+    focusY: number,
+    headingRad: number,
 ): WorldTransform => {
     const scale = Math.min(canvasWidth / worldWidth, canvasHeight / worldHeight);
-    const offsetX = (canvasWidth - worldWidth * scale) / 2;
-    const offsetY = (canvasHeight - worldHeight * scale) / 2;
-    return { scale, offsetX, offsetY };
+    const rotation = -(headingRad + Math.PI / 2);
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const a = scale * cos;
+    const b = scale * sin;
+    const c = -scale * sin;
+    const d = scale * cos;
+    const offsetX = canvasWidth / 2 - (a * focusX + c * focusY);
+    const offsetY = canvasHeight / 2 - (b * focusX + d * focusY);
+    return { scale, a, b, c, d, offsetX, offsetY };
 };

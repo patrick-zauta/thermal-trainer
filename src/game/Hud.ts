@@ -11,6 +11,9 @@ type HudState = {
 };
 
 const UI_FONT = "'Space Grotesk', 'Trebuchet MS', sans-serif";
+const TOP_BAR_HEIGHT = 48;
+const BOTTOM_BAR_HEIGHT = 34;
+const SIDE_PANEL_WIDTH = 120;
 
 export class Hud {
     public render(ctx: CanvasRenderingContext2D, width: number, height: number, time: number, state: HudState): void {
@@ -18,8 +21,10 @@ export class Hud {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
         this.drawTopBar(ctx, width, state, time);
-        this.drawSidePanel(ctx, 16, 72, "Left Brake", state.leftBrake);
-        this.drawSidePanel(ctx, width - 136, 72, "Right Brake", state.rightBrake);
+        const panelY = TOP_BAR_HEIGHT;
+        const panelHeight = Math.max(0, height - TOP_BAR_HEIGHT - BOTTOM_BAR_HEIGHT);
+        this.drawSidePanel(ctx, 16, panelY, panelHeight, "Left Brake", state.leftBrake);
+        this.drawSidePanel(ctx, width - SIDE_PANEL_WIDTH - 16, panelY, panelHeight, "Right Brake", state.rightBrake);
         this.drawBottomBar(ctx, width, height, state);
 
         if (state.paused) {
@@ -37,7 +42,7 @@ export class Hud {
         state: HudState,
         time: number,
     ): void {
-        const barHeight = 48;
+        const barHeight = TOP_BAR_HEIGHT;
         ctx.fillStyle = "#f0f0f0";
         ctx.fillRect(0, 0, width, barHeight);
         ctx.strokeStyle = "#c7c7c7";
@@ -47,9 +52,10 @@ export class Hud {
         ctx.fillStyle = "#1b1b1b";
         ctx.textBaseline = "middle";
 
-        const climbText = `Climb Rate: ${formatSigned(state.telemetry.vario)} m/s`;
+        const climbText = `Climb: ${formatSigned(state.telemetry.vario)} m/s`;
+        const integratedText = `Int 18s: ${formatSigned(state.telemetry.integratedVario)} m/s`;
         ctx.textAlign = "left";
-        ctx.fillText(climbText, 16, barHeight / 2);
+        ctx.fillText(`${climbText}  ${integratedText}`, 16, barHeight / 2);
 
         const altitudeText = `Altitude: ${Math.round(state.altitudeM)} m`;
         ctx.textAlign = "center";
@@ -68,11 +74,11 @@ export class Hud {
         ctx: CanvasRenderingContext2D,
         x: number,
         y: number,
+        panelHeight: number,
         label: string,
         value: number,
     ): void {
-        const panelWidth = 120;
-        const panelHeight = 220;
+        const panelWidth = SIDE_PANEL_WIDTH;
         ctx.fillStyle = "#f3f3f3";
         ctx.fillRect(x, y, panelWidth, panelHeight);
         ctx.strokeStyle = "#c7c7c7";
@@ -84,17 +90,17 @@ export class Hud {
         ctx.textBaseline = "top";
         ctx.fillText(label, x + panelWidth / 2, y + 10);
 
-        const barX = x + 46;
-        const barY = y + 44;
-        const barWidth = 28;
-        const barHeight = 150;
+        const barWidth = 32;
+        const barX = x + (panelWidth - barWidth) / 2;
+        const barY = y + 36;
+        const barHeight = Math.max(0, panelHeight - 72);
 
         ctx.fillStyle = "#d6d6d6";
         ctx.fillRect(barX, barY, barWidth, barHeight);
 
         const filled = barHeight * value;
         ctx.fillStyle = "#4a4a4a";
-        ctx.fillRect(barX, barY + (barHeight - filled), barWidth, filled);
+        ctx.fillRect(barX, barY, barWidth, filled);
 
         ctx.textBaseline = "alphabetic";
         ctx.fillStyle = "#2a2a2a";
@@ -107,7 +113,7 @@ export class Hud {
         height: number,
         state: HudState,
     ): void {
-        const barHeight = 34;
+        const barHeight = BOTTOM_BAR_HEIGHT;
         const y = height - barHeight;
         ctx.fillStyle = "#f0f0f0";
         ctx.fillRect(0, y, width, barHeight);
