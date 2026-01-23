@@ -14,6 +14,8 @@ export type WorldTransform = {
 const THERMAL_COLORS = ["#e35b5b", "#f4a340", "#f5d86b"];
 const SINK_COLOR = "#6aa5ff";
 const NULL_COLOR = "#e4e4e4";
+const THERMAL_FADE_OUT = 80;
+const SINK_EDGE_SOFTEN = 30;
 
 export class Map {
     public readonly worldWidth = worldWidth;
@@ -29,17 +31,17 @@ export class Map {
     public getVerticalAir(x: number, y: number): number {
         for (const zone of this.sinkZones) {
             const dist = this.distance(x, y, zone.center);
-            if (dist <= zone.radius) {
-                return zone.verticalAir;
+            const sink = this.getSinkVerticalAir(dist, zone.radius, zone.verticalAir);
+            if (sink !== null) {
+                return sink;
             }
         }
 
         for (const thermal of this.thermals) {
             const dist = this.distance(x, y, thermal.center);
-            for (const ring of thermal.rings) {
-                if (dist <= ring.radius) {
-                    return ring.verticalAir;
-                }
+            const thermalLift = this.getThermalVerticalAir(dist, thermal.rings);
+            if (thermalLift !== null) {
+                return thermalLift;
             }
         }
 
@@ -106,4 +108,55 @@ export class Map {
         const dy = y - center.y;
         return Math.hypot(dx, dy);
     }
+
+    private getSinkVerticalAir(dist: number, radius: number, verticalAir: number): number | null {
+        const edge = Math.max(1, SINK_EDGE_SOFTEN);
+        const inner = Math.max(0, radius - edge);
+        const outer = radius + edge;
+        if (dist > outer) {
+            return null;
+        }
+        if (dist <= inner) {
+            return verticalAir;
+        }
+        const t = smoothstep(inner, outer, dist);
+        return lerp(verticalAir, 0, t);
+    }
+
+    private getThermalVerticalAir(
+        dist: number,
+        rings: Thermal["rings"],
+    ): number | null {
+        const sorted = [...rings].sort((a, b) => a.radius - b.radius);
+        for (let index = 0; index < sorted.length; index += 1) {
+            const ring = sorted[index];
+            if (dist <= ring.radius) {
+                if (index === 0) {
+                    return ring.verticalAir;
+                }
+                const inner = sorted[index - 1];
+                const t = smoothstep(inner.radius, ring.radius, dist);
+                return lerp(inner.verticalAir, ring.verticalAir, t);
+            }
+        }
+
+        const outer = sorted[sorted.length - 1];
+        const fadeLimit = outer.radius + THERMAL_FADE_OUT;
+        if (dist <= fadeLimit) {
+            const t = smoothstep(outer.radius, fadeLimit, dist);
+            return lerp(outer.verticalAir, 0, t);
+        }
+
+        return null;
+    }
 }
+
+const lerp = (from: number, to: number, t: number): number => from + (to - from) * t;
+
+const smoothstep = (edge0: number, edge1: number, value: number): number => {
+    if (edge0 === edge1) {
+        return value < edge0 ? 0 : 1;
+    }
+    const t = Math.min(Math.max((value - edge0) / (edge1 - edge0), 0), 1);
+    return t * t * (3 - 2 * t);
+};
