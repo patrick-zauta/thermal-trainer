@@ -8,6 +8,8 @@ export class AudioVario {
     private mode: VarioMode = "silent";
     private climbTimer = 0;
     private sinkTimer = 0;
+    private masterVolume = 0.6;
+    private enabled = true;
 
     public ensureStarted(): void {
         if (this.started) {
@@ -39,6 +41,17 @@ export class AudioVario {
         this.oscillator = oscillator;
         this.gainNode = gainNode;
         this.started = true;
+    }
+
+    public setMasterVolume(volume: number): void {
+        this.masterVolume = clamp(volume, 0, 1);
+    }
+
+    public setEnabled(enabled: boolean): void {
+        this.enabled = enabled;
+        if (this.gainNode && this.context) {
+            this.gainNode.gain.setTargetAtTime(0, this.context.currentTime, 0.05);
+        }
     }
 
     public update(vario: number, dt: number): void {
@@ -87,8 +100,33 @@ export class AudioVario {
             targetGain = 0;
         }
 
+        const volume = this.enabled ? this.masterVolume : 0;
         this.oscillator.frequency.setTargetAtTime(targetFreq, now, 0.02);
-        this.gainNode.gain.setTargetAtTime(targetGain, now, 0.02);
+        this.gainNode.gain.setTargetAtTime(targetGain * volume, now, 0.02);
+    }
+
+    public stop(): void {
+        if (!this.context || !this.oscillator || !this.gainNode) {
+            return;
+        }
+        this.gainNode.gain.setTargetAtTime(0, this.context.currentTime, 0.05);
+    }
+
+    public dispose(): void {
+        if (this.context && this.oscillator) {
+            this.oscillator.stop();
+            this.oscillator.disconnect();
+        }
+        if (this.gainNode) {
+            this.gainNode.disconnect();
+        }
+        if (this.context) {
+            void this.context.close();
+        }
+        this.context = null;
+        this.oscillator = null;
+        this.gainNode = null;
+        this.started = false;
     }
 }
 
