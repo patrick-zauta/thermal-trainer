@@ -1,10 +1,10 @@
 import type { Keybindings, ModeId, RunSummary, ThermalVisibility, TouchControlsMode } from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
-import { InputManager } from "./input/InputManager";
+import { InputManager } from "./input";
 import { Map, WorldTransform } from "./Map";
 import { Physics, Telemetry } from "./Physics";
-import type { ActionState } from "./input/types";
+import type { ActionState } from "./input";
 
 const MAX_DT = 0.05;
 const TARGET_RADIUS = 50;

@@ -115,7 +115,6 @@ export class Physics {
 
         const totalBrake = (this.state.leftBrake + this.state.rightBrake) / 2;
         const diffBrake = this.state.rightBrake - this.state.leftBrake;
-        const totalBrakeResponse = Math.pow(totalBrake, BRAKE_RESPONSE_EXP);
         const diffBrakeResponse = applyCurve(diffBrake, TURN_RESPONSE_EXP);
 
         const baseAirspeedKmh = lerp(36, 45, this.state.speedbarAmount);
