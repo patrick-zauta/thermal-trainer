@@ -116,6 +116,7 @@ export class App {
             keybindings: this.settings.keybindings,
             audioEnabled: this.settings.audioEnabled,
             masterVolume: this.settings.masterVolume,
+            touchControls: this.settings.touchControls,
         });
 
         this.game = game;
@@ -148,12 +149,14 @@ export class App {
         this.settings = {
             ...next,
             keybindings: next.keybindings ?? defaultSettings.keybindings,
+            touchControls: next.touchControls ?? defaultSettings.touchControls,
         };
         saveSettings(this.settings);
         if (this.game) {
             this.game.setKeybindings(this.settings.keybindings);
             this.game.setAudioEnabled(this.settings.audioEnabled);
             this.game.setMasterVolume(this.settings.masterVolume);
+            this.game.setTouchControlsMode(this.settings.touchControls);
         }
         if (this.pauseOverlay) {
             this.pauseOverlay.setAudioState(this.settings);

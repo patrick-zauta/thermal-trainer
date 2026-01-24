@@ -24,11 +24,15 @@ export const loadSettings = (): Settings => {
             typeof parsed.masterVolume === "number" && Number.isFinite(parsed.masterVolume)
                 ? clamp(parsed.masterVolume, 0, 1)
                 : defaultSettings.masterVolume;
+        const touchControls = isTouchControlsMode(parsed.touchControls)
+            ? parsed.touchControls
+            : defaultSettings.touchControls;
 
         return {
             audioEnabled,
             masterVolume,
             keybindings,
+            touchControls,
         };
     } catch {
         return defaultSettings;
@@ -52,6 +56,10 @@ const mergeKeybindings = (value: Partial<Keybindings> | undefined): Keybindings 
         ...defaultKeybindings,
         ...(value ?? {}),
     };
+};
+
+const isTouchControlsMode = (value: unknown): value is Settings["touchControls"] => {
+    return value === "auto" || value === "on" || value === "off";
 };
 
 const clamp = (value: number, min: number, max: number): number => {

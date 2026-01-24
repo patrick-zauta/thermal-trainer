@@ -67,6 +67,35 @@ export const createSettingsScreen = (settings: Settings, callbacks: SettingsCall
     const fullscreenButton = createButton("Vollbild", callbacks.onFullscreen, "secondary");
     screenSection.append(screenHeader, fullscreenButton);
 
+    const controlSection = document.createElement("div");
+    controlSection.className = "section";
+
+    const controlHeader = document.createElement("h2");
+    controlHeader.textContent = "Steuerung";
+
+    const touchRow = document.createElement("div");
+    touchRow.className = "row";
+
+    const touchLabel = document.createElement("span");
+    touchLabel.textContent = "Touch Steuerung";
+
+    const touchSelect = document.createElement("select");
+    touchSelect.className = "select";
+    [
+        { label: "Auto", value: "auto" },
+        { label: "Ein", value: "on" },
+        { label: "Aus", value: "off" },
+    ].forEach((option) => {
+        const entry = document.createElement("option");
+        entry.value = option.value;
+        entry.textContent = option.label;
+        touchSelect.appendChild(entry);
+    });
+    touchSelect.value = settings.touchControls;
+
+    touchRow.append(touchLabel, touchSelect);
+    controlSection.append(controlHeader, touchRow);
+
     const keySection = document.createElement("div");
     keySection.className = "section";
 
@@ -171,10 +200,12 @@ export const createSettingsScreen = (settings: Settings, callbacks: SettingsCall
             audioEnabled: defaultSettings.audioEnabled,
             masterVolume: defaultSettings.masterVolume,
             keybindings: currentBindings,
+            touchControls: defaultSettings.touchControls,
         };
         audioToggle.checked = currentSettings.audioEnabled;
         volumeSlider.value = Math.round(currentSettings.masterVolume * 100).toString();
         volumeValue.textContent = `${volumeSlider.value}%`;
+        touchSelect.value = currentSettings.touchControls;
         callbacks.onUpdate(currentSettings);
         warning.textContent = "";
         captureAction = null;
@@ -185,7 +216,7 @@ export const createSettingsScreen = (settings: Settings, callbacks: SettingsCall
 
     buttonRow.append(defaultsButton, backButton);
 
-    card.append(title, audioSection, screenSection, keySection, buttonRow);
+    card.append(title, audioSection, screenSection, controlSection, keySection, buttonRow);
     screen.append(card);
 
     audioToggle.addEventListener("change", () => {
@@ -193,6 +224,15 @@ export const createSettingsScreen = (settings: Settings, callbacks: SettingsCall
             ...currentSettings,
             audioEnabled: audioToggle.checked,
             masterVolume: clamp(Number(volumeSlider.value) / 100, 0, 1),
+            keybindings: currentBindings,
+        };
+        callbacks.onUpdate(currentSettings);
+    });
+
+    touchSelect.addEventListener("change", () => {
+        currentSettings = {
+            ...currentSettings,
+            touchControls: touchSelect.value === "on" ? "on" : touchSelect.value === "off" ? "off" : "auto",
             keybindings: currentBindings,
         };
         callbacks.onUpdate(currentSettings);

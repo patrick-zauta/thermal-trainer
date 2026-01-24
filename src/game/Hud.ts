@@ -27,35 +27,53 @@ type HudState = {
     speedbarTarget: number;
     targetReached: boolean;
     debug: boolean;
+    touchControlsVisible: boolean;
     debugMetrics: DebugMetrics;
 };
 
 const UI_FONT = "'Space Grotesk', 'Trebuchet MS', sans-serif";
-const TOP_BAR_HEIGHT = 56;
-const BOTTOM_PANEL_HEIGHT = 72;
-const SIDE_PANEL_WIDTH = 120;
 
 export class Hud {
     public render(ctx: CanvasRenderingContext2D, width: number, height: number, state: HudState): void {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        this.drawTopBar(ctx, width, state);
+        const compact = width < 720 || height < 520;
+        const topBarHeight = compact ? 46 : 56;
+        const bottomPanelHeight = compact ? 60 : 72;
+        const sidePanelWidth = compact ? 104 : 120;
+        const showSidePanels = !state.touchControlsVisible && !compact && width >= 860;
 
-        const panelY = TOP_BAR_HEIGHT;
-        const panelHeight = Math.max(0, height - TOP_BAR_HEIGHT - BOTTOM_PANEL_HEIGHT);
-        this.drawSidePanel(ctx, 16, panelY, panelHeight, "Bremse links", state.leftBrake, state.leftBrakeTarget);
-        this.drawSidePanel(
-            ctx,
-            width - SIDE_PANEL_WIDTH - 16,
-            panelY,
-            panelHeight,
-            "Bremse rechts",
-            state.rightBrake,
-            state.rightBrakeTarget,
-        );
+        this.drawTopBar(ctx, width, state, topBarHeight, compact);
 
-        this.drawBottomPanel(ctx, width, height, state);
+        if (showSidePanels) {
+            const panelY = topBarHeight;
+            const panelHeight = Math.max(0, height - topBarHeight - bottomPanelHeight);
+            this.drawSidePanel(
+                ctx,
+                16,
+                panelY,
+                panelHeight,
+                sidePanelWidth,
+                "Bremse links",
+                state.leftBrake,
+                state.leftBrakeTarget,
+                compact,
+            );
+            this.drawSidePanel(
+                ctx,
+                width - sidePanelWidth - 16,
+                panelY,
+                panelHeight,
+                sidePanelWidth,
+                "Bremse rechts",
+                state.rightBrake,
+                state.rightBrakeTarget,
+                compact,
+            );
+        }
+
+        this.drawBottomPanel(ctx, width, height, state, bottomPanelHeight, compact);
 
         if (state.stall) {
             this.drawCenteredBanner(ctx, width, height, "STALL WARNUNG");
@@ -64,32 +82,48 @@ export class Hud {
         }
 
         if (state.debug) {
-            this.drawDebugOverlay(ctx, state.debugMetrics);
+            this.drawDebugOverlay(ctx, state.debugMetrics, topBarHeight);
         }
 
         ctx.restore();
     }
 
-    private drawTopBar(ctx: CanvasRenderingContext2D, width: number, state: HudState): void {
+    private drawTopBar(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        state: HudState,
+        barHeight: number,
+        compact: boolean,
+    ): void {
         ctx.fillStyle = "#f5f3ef";
-        ctx.fillRect(0, 0, width, TOP_BAR_HEIGHT);
+        ctx.fillRect(0, 0, width, barHeight);
         ctx.strokeStyle = "#d3d0cb";
-        ctx.strokeRect(0, 0, width, TOP_BAR_HEIGHT);
+        ctx.strokeRect(0, 0, width, barHeight);
 
         const groupWidth = width / 3;
-        const labelFont = `12px ${UI_FONT}`;
-        const valueFont = `18px ${UI_FONT}`;
+        const labelFont = `${compact ? 11 : 12}px ${UI_FONT}`;
+        const valueFont = `${compact ? 16 : 18}px ${UI_FONT}`;
 
         ctx.fillStyle = "#4a433b";
         ctx.textBaseline = "top";
 
-        this.drawGroup(ctx, 16, 8, groupWidth - 32, "Hoehe", `${Math.round(state.altitudeM)} m`, labelFont, valueFont);
+        const textOffset = compact ? 6 : 8;
+        this.drawGroup(
+            ctx,
+            16,
+            textOffset,
+            groupWidth - 32,
+            "Hoehe",
+            `${Math.round(state.altitudeM)} m`,
+            labelFont,
+            valueFont,
+        );
 
         const headingText = `${state.telemetry.headingDeg} Grad`;
         this.drawGroup(
             ctx,
             groupWidth + 16,
-            8,
+            textOffset,
             groupWidth - 32,
             "Kurs",
             headingText,
@@ -102,7 +136,7 @@ export class Hud {
         this.drawGroup(
             ctx,
             groupWidth * 2 + 16,
-            8,
+            textOffset,
             groupWidth - 32,
             "Speed",
             speedText,
@@ -136,23 +170,25 @@ export class Hud {
         x: number,
         y: number,
         panelHeight: number,
+        panelWidth: number,
         label: string,
         value: number,
         target: number,
+        compact: boolean,
     ): void {
         ctx.fillStyle = "#f5f3ef";
-        ctx.fillRect(x, y, SIDE_PANEL_WIDTH, panelHeight);
+        ctx.fillRect(x, y, panelWidth, panelHeight);
         ctx.strokeStyle = "#d3d0cb";
-        ctx.strokeRect(x, y, SIDE_PANEL_WIDTH, panelHeight);
+        ctx.strokeRect(x, y, panelWidth, panelHeight);
 
-        ctx.font = `13px ${UI_FONT}`;
+        ctx.font = `${compact ? 12 : 13}px ${UI_FONT}`;
         ctx.fillStyle = "#2a2a2a";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(label, x + SIDE_PANEL_WIDTH / 2, y + 10);
+        ctx.fillText(label, x + panelWidth / 2, y + 10);
 
         const barWidth = 32;
-        const barX = x + (SIDE_PANEL_WIDTH - barWidth) / 2;
+        const barX = x + (panelWidth - barWidth) / 2;
         const barY = y + 34;
         const barHeight = Math.max(0, panelHeight - 64);
 
@@ -171,36 +207,43 @@ export class Hud {
         ctx.lineTo(barX + barWidth + 4, targetY);
         ctx.stroke();
 
-        ctx.font = `14px ${UI_FONT}`;
+        ctx.font = `${compact ? 12 : 14}px ${UI_FONT}`;
         ctx.fillStyle = "#1d1b18";
         ctx.textBaseline = "alphabetic";
-        ctx.fillText(`${Math.round(value * 100)}%`, x + SIDE_PANEL_WIDTH / 2, y + panelHeight - 12);
+        ctx.fillText(`${Math.round(value * 100)}%`, x + panelWidth / 2, y + panelHeight - 12);
     }
 
-    private drawBottomPanel(ctx: CanvasRenderingContext2D, width: number, height: number, state: HudState): void {
-        const y = height - BOTTOM_PANEL_HEIGHT;
+    private drawBottomPanel(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        height: number,
+        state: HudState,
+        panelHeight: number,
+        compact: boolean,
+    ): void {
+        const y = height - panelHeight;
         ctx.fillStyle = "#f5f3ef";
-        ctx.fillRect(0, y, width, BOTTOM_PANEL_HEIGHT);
+        ctx.fillRect(0, y, width, panelHeight);
         ctx.strokeStyle = "#d3d0cb";
-        ctx.strokeRect(0, y, width, BOTTOM_PANEL_HEIGHT);
+        ctx.strokeRect(0, y, width, panelHeight);
 
         const varioColor = selectVarioColor(state.telemetry.vario);
         ctx.fillStyle = varioColor;
-        ctx.font = `26px ${UI_FONT}`;
+        ctx.font = `${compact ? 20 : 26}px ${UI_FONT}`;
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(`Vario ${formatSigned(state.telemetry.vario)} m/s`, 24, y + BOTTOM_PANEL_HEIGHT / 2);
+        ctx.fillText(`Vario ${formatSigned(state.telemetry.vario)} m/s`, 18, y + panelHeight / 2);
 
         ctx.fillStyle = "#5a554c";
-        ctx.font = `16px ${UI_FONT}`;
+        ctx.font = `${compact ? 13 : 16}px ${UI_FONT}`;
         ctx.textAlign = "right";
         ctx.fillText(
             `Int 18s ${formatSigned(state.telemetry.integratedVario)} m/s`,
-            width - 24,
-            y + BOTTOM_PANEL_HEIGHT / 2,
+            width - 18,
+            y + panelHeight / 2,
         );
 
-        this.drawVarioDot(ctx, width - 24, y + 18, state.telemetry.vario);
+        this.drawVarioDot(ctx, width - 18, y + (compact ? 14 : 18), state.telemetry.vario);
     }
 
     private drawCenteredBanner(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
@@ -229,7 +272,7 @@ export class Hud {
         ctx.fill();
     }
 
-    private drawDebugOverlay(ctx: CanvasRenderingContext2D, metrics: DebugMetrics): void {
+    private drawDebugOverlay(ctx: CanvasRenderingContext2D, metrics: DebugMetrics, topBarHeight: number): void {
         const lines = [
             `dt: ${metrics.dt.toFixed(3)} s`,
             `fps: ${metrics.fps.toFixed(0)}`,
@@ -247,13 +290,13 @@ export class Hud {
 
         ctx.save();
         ctx.fillStyle = "rgba(20, 20, 20, 0.75)";
-        ctx.fillRect(16, TOP_BAR_HEIGHT + 12, 220, 16 + lines.length * 16);
+        ctx.fillRect(16, topBarHeight + 12, 220, 16 + lines.length * 16);
         ctx.fillStyle = "#f5f5f5";
         ctx.font = `12px ${UI_FONT}`;
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         lines.forEach((line, index) => {
-            ctx.fillText(line, 24, TOP_BAR_HEIGHT + 20 + index * 16);
+            ctx.fillText(line, 24, topBarHeight + 20 + index * 16);
         });
         ctx.restore();
     }

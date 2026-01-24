@@ -24,3 +24,11 @@ npm run dev
 ## Hinweise
 - Keybindings lassen sich in Einstellungen aendern.
 - Restart ist nur ueber das Pause Menue moeglich.
+- Touch Steuerung ist auf Mobile verfuegbar und kann in Einstellungen auf Auto, Ein oder Aus gesetzt werden.
+
+## Mobile Steuerung
+- Linker Slider: Bremse links
+- Rechter Slider: Bremse rechts
+- Speedbar Button: halten zum Beschleunigen
+- Pause Button oben rechts
+- Multi Touch fuer beide Bremsen gleichzeitig wird unterstuetzt

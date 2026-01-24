@@ -14,4 +14,5 @@ export const defaultSettings: Settings = {
     audioEnabled: true,
     masterVolume: 0.6,
     keybindings: defaultKeybindings,
+    touchControls: "auto",
 };

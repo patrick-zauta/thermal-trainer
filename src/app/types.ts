@@ -4,6 +4,8 @@ export type ModeId = "training" | "free";
 
 export type ThermalVisibility = "visible" | "rings" | "hidden";
 
+export type TouchControlsMode = "auto" | "on" | "off";
+
 export type Action =
     | "LeftBrakeIncrease"
     | "LeftBrakeDecrease"
@@ -19,6 +21,7 @@ export type Settings = {
     audioEnabled: boolean;
     masterVolume: number;
     keybindings: Keybindings;
+    touchControls: TouchControlsMode;
 };
 
 export type ModeSelection = {
