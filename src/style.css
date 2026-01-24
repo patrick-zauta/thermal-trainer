@@ -25,6 +25,10 @@ body,
     overflow: hidden;
 }
 
+body {
+    overscroll-behavior: none;
+}
+
 #app {
     display: block;
     position: relative;
@@ -35,6 +39,7 @@ body,
     width: 100%;
     height: 100%;
     background: #ffffff;
+    touch-action: none;
 }
 
 .screen {
@@ -111,6 +116,12 @@ body,
     background: var(--accent);
     color: #ffffff;
     box-shadow: 0 8px 18px rgba(208, 106, 50, 0.2);
+    touch-action: manipulation;
+}
+
+input,
+select {
+    touch-action: manipulation;
 }
 
 .btn.secondary {

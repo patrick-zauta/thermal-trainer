@@ -1,9 +1,10 @@
-import type { Keybindings, ModeId, RunSummary, ThermalVisibility } from "../app/types";
+import type { Keybindings, ModeId, RunSummary, ThermalVisibility, TouchControlsMode } from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
-import { Input } from "./Input";
+import { InputManager } from "./input/InputManager";
 import { Map, WorldTransform } from "./Map";
 import { Physics, Telemetry } from "./Physics";
+import type { ActionState } from "./input/types";
 
 const MAX_DT = 0.05;
 const TARGET_RADIUS = 50;
@@ -15,18 +16,26 @@ type GameConfig = {
     keybindings: Keybindings;
     audioEnabled: boolean;
     masterVolume: number;
+    touchControls: TouchControlsMode;
 };
 
 export class Game {
     private readonly canvas: HTMLCanvasElement;
     private readonly ctx: CanvasRenderingContext2D;
     private readonly map: Map;
-    private readonly input: Input;
+    private readonly input: InputManager;
     private readonly physics: Physics;
     private readonly hud: Hud;
     private readonly audio: AudioVario;
     private telemetry: Telemetry;
     private transform: WorldTransform;
+    private inputState: ActionState = {
+        leftBrakeTarget: 0,
+        rightBrakeTarget: 0,
+        speedbarPressed: false,
+        pausePressed: false,
+        debugTogglePressed: false,
+    };
     private readonly startX: number;
     private readonly startY: number;
     private readonly mode: ModeId;
@@ -64,14 +73,9 @@ export class Game {
         this.mode = config.mode;
         this.thermalVisibility = config.thermalVisibility;
 
-        this.input = new Input(
-            {
-                onPauseToggle: () => this.togglePause(),
-                onDebugToggle: () => this.toggleDebug(),
-                onFirstInput: () => this.audio.ensureStarted(),
-            },
-            config.keybindings,
-        );
+        this.input = new InputManager(canvas, config.keybindings, config.touchControls, {
+            onFirstInput: () => this.audio.ensureStarted(),
+        });
 
         window.addEventListener("resize", this.handleResize);
         this.handleResize();
@@ -96,6 +100,13 @@ export class Game {
     public reset(): void {
         this.paused = false;
         this.input.resetTargets();
+        this.inputState = {
+            leftBrakeTarget: 0,
+            rightBrakeTarget: 0,
+            speedbarPressed: false,
+            pausePressed: false,
+            debugTogglePressed: false,
+        };
         this.physics.reset(this.startX, this.startY);
         this.telemetry = this.physics.telemetry;
         this.time = 0;
@@ -126,6 +137,10 @@ export class Game {
         this.audio.setMasterVolume(volume);
     }
 
+    public setTouchControlsMode(mode: TouchControlsMode): void {
+        this.input.setTouchMode(mode);
+    }
+
     public getSummary(): RunSummary {
         const endAltitude = this.physics.state.altitudeM;
         const netAltitude = endAltitude - this.stats.startAltitudeM;
@@ -150,18 +165,27 @@ export class Game {
         const dtRaw = (timestamp - this.lastTime) / 1000;
         const dt = this.lastTime === 0 ? 0 : Math.min(dtRaw, MAX_DT);
         this.lastTime = timestamp;
+        this.input.update(dt);
+        this.inputState = this.input.getState();
+
+        if (this.inputState.pausePressed) {
+            this.togglePause();
+        }
+        if (this.inputState.debugTogglePressed) {
+            this.toggleDebug();
+        }
+
         if (!this.paused) {
             this.time += dt;
         }
 
         if (!this.paused && dt > 0) {
-            this.input.update(dt);
             this.telemetry = this.physics.step(
                 dt,
                 {
-                    leftTarget: this.input.leftTarget,
-                    rightTarget: this.input.rightTarget,
-                    speedbarTarget: this.input.speedbarTarget,
+                    leftTarget: this.inputState.leftBrakeTarget,
+                    rightTarget: this.inputState.rightBrakeTarget,
+                    speedbarTarget: this.inputState.speedbarPressed ? 1 : 0,
                 },
                 this.map,
                 this.time,
@@ -178,6 +202,7 @@ export class Game {
 
     private render(dt: number): void {
         const { width, height } = this.canvas;
+        const controlsVisible = this.input.prepareControls(width, height);
         this.transform = computeTransform(
             width,
             height,
@@ -206,13 +231,14 @@ export class Game {
             telemetry: this.telemetry,
             leftBrake: this.physics.state.leftBrake,
             rightBrake: this.physics.state.rightBrake,
-            leftBrakeTarget: this.input.leftTarget,
-            rightBrakeTarget: this.input.rightTarget,
+            leftBrakeTarget: this.inputState.leftBrakeTarget,
+            rightBrakeTarget: this.inputState.rightBrakeTarget,
             paused: this.paused,
             stall: this.telemetry.stall,
-            speedbarTarget: this.input.speedbarTarget,
+            speedbarTarget: this.inputState.speedbarPressed ? 1 : 0,
             targetReached: this.stats.targetReached,
             debug: this.debugEnabled,
+            touchControlsVisible: controlsVisible,
             debugMetrics: {
                 dt,
                 fps: dt > 0 ? 1 / dt : 0,
@@ -227,6 +253,12 @@ export class Game {
                 diffBrake: this.telemetry.diffBrake,
                 turnRate: this.telemetry.turnRate,
             },
+        });
+
+        this.input.renderControls(this.ctx, {
+            leftTarget: this.inputState.leftBrakeTarget,
+            rightTarget: this.inputState.rightBrakeTarget,
+            speedbarPressed: this.inputState.speedbarPressed,
         });
     }
 
