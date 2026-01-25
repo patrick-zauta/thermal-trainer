@@ -25,6 +25,7 @@ npm run dev
 - Keybindings lassen sich in Einstellungen aendern.
 - Restart ist nur ueber das Pause Menue moeglich.
 - Touch Steuerung ist auf Mobile verfuegbar und kann in Einstellungen auf Auto, Ein oder Aus gesetzt werden.
+- Turn Modell nutzt yaw, slip und bank fuer traegeres Kurvenverhalten, Vollkreis ca 13 Sekunden bei Trim.
 
 ## Mobile Steuerung
 - Linker Slider: Bremse links

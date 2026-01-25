@@ -9,6 +9,9 @@ export type FlightState = {
     leftBrake: number;
     rightBrake: number;
     speedbarAmount: number;
+    yawRateRad: number;
+    slipBeta: number;
+    bankPhiRad: number;
 };
 
 export type Telemetry = {
@@ -21,6 +24,11 @@ export type Telemetry = {
     headingDeg: number;
     totalBrake: number;
     diffBrake: number;
+    turnInput: number;
+    rTarget: number;
+    yawRateRad: number;
+    slipBeta: number;
+    bankPhiRad: number;
     sinkPolar: number;
     brakePenalty: number;
     sinkGlider: number;
@@ -31,14 +39,21 @@ export type Telemetry = {
 
 const BRAKE_RAMP_RATE = 2.0;
 const SPEEDBAR_RAMP_RATE = 0.4;
-const TURN_RATE = 1.6;
-const TURN_SINK = 0.4;
-const TURN_RESPONSE_EXP = 1.4;
+const BASE_TURN_RATE = (Math.PI * 2) / 13;
+const VREF_MPS = 36 / 3.6;
+const TAU_R = 0.35;
+const TAU_BETA = 0.7;
+const TAU_PHI = 0.9;
+const K_BETA = 1.8;
+const K_PHI = 1.0;
+const YAW_RATE_LIMIT = 0.9;
+const BETA_LIMIT = 1.0;
+const PHI_LIMIT = 1.2;
+const BANK_SINK = 0.25;
 
 const MIN_SPEED_KMH = 18;
 const MAX_SPEED_KMH = 50;
 const STALL_SINK = 0.8;
-const MIN_TURN_RADIUS_M = 15;
 
 const VARIO_WINDOW_SEC = 18;
 
@@ -68,6 +83,9 @@ export class Physics {
             leftBrake: 0,
             rightBrake: 0,
             speedbarAmount: 0,
+            yawRateRad: 0,
+            slipBeta: 0,
+            bankPhiRad: 0,
         };
 
         this.telemetry = {
@@ -80,6 +98,11 @@ export class Physics {
             headingDeg: 0,
             totalBrake: 0,
             diffBrake: 0,
+            turnInput: 0,
+            rTarget: 0,
+            yawRateRad: 0,
+            slipBeta: 0,
+            bankPhiRad: 0,
             sinkPolar: 1.0,
             brakePenalty: 0,
             sinkGlider: 1.0,
@@ -98,6 +121,9 @@ export class Physics {
         this.state.leftBrake = 0;
         this.state.rightBrake = 0;
         this.state.speedbarAmount = 0;
+        this.state.yawRateRad = 0;
+        this.state.slipBeta = 0;
+        this.state.bankPhiRad = 0;
         this.varioHistory = [];
         this.varioHistoryTime = 0;
     }
@@ -114,33 +140,41 @@ export class Physics {
 
         const totalBrake = (this.state.leftBrake + this.state.rightBrake) / 2;
         const diffBrake = this.state.rightBrake - this.state.leftBrake;
-        const diffBrakeResponse = applyCurve(diffBrake, TURN_RESPONSE_EXP);
+        const turnInput = clamp(diffBrake, -1, 1);
 
         const baseAirspeedKmh = lerp(36, 45, this.state.speedbarAmount);
         const brakeSpeedLossKmh = totalBrake * 14;
         const airspeedKmh = clamp(baseAirspeedKmh - brakeSpeedLossKmh, MIN_SPEED_KMH, MAX_SPEED_KMH);
         const speedMps = airspeedKmh / 3.6;
 
+        const speedScale = clamp(VREF_MPS / Math.max(speedMps, 0.1), 0.7, 1.4);
+        const rTarget = turnInput * BASE_TURN_RATE * speedScale;
+        const rDot = (rTarget - this.state.yawRateRad) / TAU_R;
+        this.state.yawRateRad = clamp(this.state.yawRateRad + rDot * dt, -YAW_RATE_LIMIT, YAW_RATE_LIMIT);
+
+        const betaTarget = K_BETA * this.state.yawRateRad;
+        const betaDot = (betaTarget - this.state.slipBeta) / TAU_BETA;
+        this.state.slipBeta = clamp(this.state.slipBeta + betaDot * dt, -BETA_LIMIT, BETA_LIMIT);
+
+        const phiTarget = K_PHI * this.state.slipBeta;
+        const phiDot = (phiTarget - this.state.bankPhiRad) / TAU_PHI;
+        this.state.bankPhiRad = clamp(this.state.bankPhiRad + phiDot * dt, -PHI_LIMIT, PHI_LIMIT);
+
         const sinkPolar = interpolatePolar(airspeedKmh);
         const brakePenalty = totalBrake > 0.25 ? (totalBrake - 0.25) * 1.8 : 0;
         const stall = airspeedKmh < 24 || totalBrake > 0.8;
-
-        const maxTurnRate = speedMps / MIN_TURN_RADIUS_M;
-        const turnRateRaw = TURN_RATE * diffBrakeResponse;
-        const turnRate = clamp(turnRateRaw, -maxTurnRate, maxTurnRate);
-        const bankFactor = maxTurnRate > 0 ? Math.abs(turnRate) / maxTurnRate : 0;
 
         const sinkGlider =
             sinkPolar +
             brakePenalty +
             (stall ? STALL_SINK : 0) +
-            bankFactor * bankFactor * TURN_SINK;
+            (Math.abs(this.state.bankPhiRad) / PHI_LIMIT) * BANK_SINK;
 
         const verticalAir = map.getVerticalAir(this.state.x, this.state.y, time);
         const vario = verticalAir - sinkGlider;
         const integratedVario = this.updateIntegratedVario(vario, dt);
 
-        this.state.headingRad = wrapAngle(this.state.headingRad + turnRate * dt);
+        this.state.headingRad = wrapAngle(this.state.headingRad + this.state.yawRateRad * dt);
         this.state.speedMps = speedMps;
 
         this.state.x += Math.cos(this.state.headingRad) * speedMps * dt;
@@ -161,10 +195,15 @@ export class Physics {
             headingDeg: toHeadingDeg(this.state.headingRad),
             totalBrake,
             diffBrake,
+            turnInput,
+            rTarget,
+            yawRateRad: this.state.yawRateRad,
+            slipBeta: this.state.slipBeta,
+            bankPhiRad: this.state.bankPhiRad,
             sinkPolar,
             brakePenalty,
             sinkGlider,
-            turnRate,
+            turnRate: this.state.yawRateRad,
             stall,
             speedbarAmount: this.state.speedbarAmount,
         };
@@ -239,11 +278,6 @@ const moveTowards = (current: number, target: number, maxDelta: number): number 
         return target;
     }
     return current + Math.sign(delta) * maxDelta;
-};
-
-const applyCurve = (value: number, exponent: number): number => {
-    const sign = Math.sign(value);
-    return sign * Math.pow(Math.abs(value), exponent);
 };
 
 const lerp = (min: number, max: number, t: number): number => {
