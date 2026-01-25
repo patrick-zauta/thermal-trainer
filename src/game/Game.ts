@@ -1,15 +1,21 @@
-import type { Keybindings, ModeId, RunSummary, ThermalVisibility, TouchControlsMode } from "../app/types";
+import type {
+    Keybindings,
+    ModeId,
+    RunSummary,
+    ThermalVisibility,
+    TouchControlsMode,
+    WindSettings,
+} from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
 import { InputManager } from "./input";
 import { Map, WorldTransform } from "./Map";
 import { Physics, Telemetry } from "./Physics";
 import type { ActionState } from "./input";
+import type { MapId, Turnpoint } from "../data/mvpMap";
+import { getMapDefinition } from "../data/mvpMap";
 
 const MAX_DT = 0.05;
-const TARGET_RADIUS = 50;
-const TARGET_CENTER = { x: 1050, y: 600 };
-
 type GameConfig = {
     mode: ModeId;
     thermalVisibility: ThermalVisibility;
@@ -17,6 +23,8 @@ type GameConfig = {
     audioEnabled: boolean;
     masterVolume: number;
     touchControls: TouchControlsMode;
+    wind: WindSettings;
+    mapId: MapId;
 };
 
 export class Game {
@@ -40,9 +48,14 @@ export class Game {
     private readonly startY: number;
     private readonly mode: ModeId;
     private readonly thermalVisibility: ThermalVisibility;
+    private windSettings: WindSettings;
     private pauseCallback: ((paused: boolean) => void) | null = null;
     private paused = false;
     private debugEnabled = false;
+    private endState: "none" | "winner" | "gameover" = "none";
+    private endCallback: ((state: "winner" | "gameover") => void) | null = null;
+    private turnpoints: Turnpoint[] = [];
+    private turnpointIndex = 0;
     private time = 0;
     private lastTime = 0;
     private frameId: number | null = null;
@@ -58,7 +71,7 @@ export class Game {
         }
         this.ctx = context;
 
-        this.map = new Map();
+        this.map = new Map(getMapDefinition(config.mapId));
         this.startX = 200;
         this.startY = this.map.worldHeight / 2;
         this.physics = new Physics(this.startX, this.startY);
@@ -72,6 +85,9 @@ export class Game {
 
         this.mode = config.mode;
         this.thermalVisibility = config.thermalVisibility;
+        this.windSettings = { ...config.wind };
+        this.map.setWindSettings(this.windSettings);
+        this.turnpoints = this.map.getTurnpoints();
 
         this.input = new InputManager(canvas, config.keybindings, config.touchControls, {
             onFirstInput: () => this.audio.ensureStarted(),
@@ -99,6 +115,8 @@ export class Game {
 
     public reset(): void {
         this.paused = false;
+        this.endState = "none";
+        this.turnpointIndex = 0;
         this.input.resetTargets();
         this.inputState = {
             leftBrakeTarget: 0,
@@ -141,12 +159,22 @@ export class Game {
         this.input.setTouchMode(mode);
     }
 
+    public setWindSettings(settings: WindSettings): void {
+        this.windSettings = { ...settings };
+        this.map.setWindSettings(this.windSettings);
+    }
+
+    public setEndCallback(callback: (state: "winner" | "gameover") => void): void {
+        this.endCallback = callback;
+    }
+
     public getSummary(): RunSummary {
         const endAltitude = this.physics.state.altitudeM;
         const netAltitude = endAltitude - this.stats.startAltitudeM;
         const avgClimb = this.stats.timeClimbSec > 0 ? this.stats.climbSum / this.stats.timeClimbSec : 0;
         return {
             mode: this.mode,
+            mapId: this.map.getId(),
             durationSec: this.stats.durationSec,
             startAltitudeM: this.stats.startAltitudeM,
             endAltitudeM: endAltitude,
@@ -158,6 +186,7 @@ export class Game {
             stallCount: this.stats.stallCount,
             targetReached: this.stats.targetReached,
             samples: this.stats.samples,
+            wind: { ...this.windSettings },
         };
     }
 
@@ -175,11 +204,11 @@ export class Game {
             this.toggleDebug();
         }
 
-        if (!this.paused) {
+        if (!this.paused && this.endState === "none") {
             this.time += dt;
         }
 
-        if (!this.paused && dt > 0) {
+        if (!this.paused && this.endState === "none" && dt > 0) {
             this.telemetry = this.physics.step(
                 dt,
                 {
@@ -189,6 +218,7 @@ export class Game {
                 },
                 this.map,
                 this.time,
+                this.windSettings,
             );
             this.audio.update(this.telemetry.vario, dt);
             this.updateStats(dt);
@@ -217,9 +247,10 @@ export class Game {
         this.ctx.fillStyle = "#ffffff";
         this.ctx.fillRect(0, 0, width, height);
 
-        this.map.render(this.ctx, this.transform, {
+        this.map.render(this.ctx, this.transform, this.time, {
             visibility: this.thermalVisibility,
             showLabels: this.thermalVisibility === "visible",
+            showTurnpoints: true,
         });
         if (this.mode === "training") {
             this.renderTarget();
@@ -239,6 +270,8 @@ export class Game {
             targetReached: this.stats.targetReached,
             debug: this.debugEnabled,
             touchControlsVisible: controlsVisible,
+            nextTurnpoint: this.getNextTurnpointInfo(),
+            turnpointProgress: this.getTurnpointProgress(),
             debugMetrics: {
                 dt,
                 fps: dt > 0 ? 1 / dt : 0,
@@ -249,6 +282,11 @@ export class Game {
                 vario: this.telemetry.vario,
                 speedbarAmount: this.telemetry.speedbarAmount,
                 airspeedKmh: this.telemetry.airspeedKmh,
+                groundspeedKmh: this.telemetry.groundSpeedKmh,
+                windSpeedMps: this.telemetry.windSpeedMps,
+                windDirDeg: this.telemetry.windDirDeg,
+                windVecX: this.telemetry.windVecX,
+                windVecY: this.telemetry.windVecY,
                 totalBrake: this.telemetry.totalBrake,
                 diffBrake: this.telemetry.diffBrake,
                 turnRate: this.telemetry.turnRate,
@@ -258,6 +296,9 @@ export class Game {
                 slipBeta: this.telemetry.slipBeta,
                 bankPhiRad: this.telemetry.bankPhiRad,
             },
+            windIndicatorEnabled: this.windSettings.windEnabled && this.windSettings.windIndicatorEnabled,
+            windSpeedMps: this.telemetry.windSpeedMps,
+            windDirDeg: this.telemetry.windDirDeg,
         });
 
         this.input.renderControls(this.ctx, {
@@ -292,9 +333,10 @@ export class Game {
     }
 
     private renderTarget(): void {
+        const target = this.map.getTarget();
         const { a, b, c, d, offsetX, offsetY } = this.transform;
-        const x = a * TARGET_CENTER.x + c * TARGET_CENTER.y + offsetX;
-        const y = b * TARGET_CENTER.x + d * TARGET_CENTER.y + offsetY;
+        const x = a * target.center.x + c * target.center.y + offsetX;
+        const y = b * target.center.x + d * target.center.y + offsetY;
         const scale = Math.hypot(a, b);
 
         this.ctx.save();
@@ -302,12 +344,15 @@ export class Game {
         this.ctx.strokeStyle = this.stats.targetReached ? "#2a6b2a" : "#5a5a5a";
         this.ctx.lineWidth = 2;
         this.ctx.beginPath();
-        this.ctx.arc(x, y, TARGET_RADIUS * scale, 0, Math.PI * 2);
+        this.ctx.arc(x, y, target.radius * scale, 0, Math.PI * 2);
         this.ctx.stroke();
         this.ctx.restore();
     }
 
     private togglePause(): void {
+        if (this.endState !== "none") {
+            return;
+        }
         this.setPaused(!this.paused);
     }
 
@@ -350,11 +395,21 @@ export class Game {
         }
         this.lastStall = this.telemetry.stall;
 
-        if (this.mode === "training" && !this.stats.targetReached) {
-            const dx = this.physics.state.x - TARGET_CENTER.x;
-            const dy = this.physics.state.y - TARGET_CENTER.y;
-            if (Math.hypot(dx, dy) <= TARGET_RADIUS) {
-                this.stats.targetReached = true;
+        if (this.endState === "none") {
+            if (altitude <= 0) {
+                this.endRun("gameover");
+                return;
+            }
+            this.checkTurnpointProgress();
+            if (this.mode === "training" && !this.stats.targetReached) {
+                const target = this.map.getTarget();
+                const dx = this.physics.state.x - target.center.x;
+                const dy = this.physics.state.y - target.center.y;
+                if (Math.hypot(dx, dy) <= target.radius) {
+                    this.stats.targetReached = true;
+                    this.endRun("winner");
+                    return;
+                }
             }
         }
 
@@ -369,6 +424,54 @@ export class Game {
             });
             this.pathAccumulator -= 0.2;
         }
+    }
+
+    private endRun(state: "winner" | "gameover"): void {
+        if (this.endState !== "none") {
+            return;
+        }
+        this.endState = state;
+        this.paused = true;
+        this.input.resetTargets();
+        if (this.endCallback) {
+            this.endCallback(state);
+        }
+    }
+
+    private checkTurnpointProgress(): void {
+        const next = this.turnpoints[this.turnpointIndex];
+        if (!next) {
+            return;
+        }
+        const dx = this.physics.state.x - next.center.x;
+        const dy = this.physics.state.y - next.center.y;
+        if (Math.hypot(dx, dy) <= next.radius && this.physics.state.altitudeM >= next.minAltitudeM) {
+            this.turnpointIndex += 1;
+        }
+    }
+
+    private getNextTurnpointInfo(): { name: string; distanceM: number; bearingRad: number } | null {
+        const next = this.turnpoints[this.turnpointIndex];
+        if (!next) {
+            return null;
+        }
+        const dx = next.center.x - this.physics.state.x;
+        const dy = next.center.y - this.physics.state.y;
+        const distance = Math.hypot(dx, dy);
+        const bearing = Math.atan2(dy, dx);
+        const relative = wrapSignedAngle(bearing - this.physics.state.headingRad);
+        return {
+            name: next.name,
+            distanceM: distance,
+            bearingRad: relative,
+        };
+    }
+
+    private getTurnpointProgress(): { completed: number; total: number } {
+        return {
+            completed: Math.min(this.turnpointIndex, this.turnpoints.length),
+            total: this.turnpoints.length,
+        };
     }
 }
 
@@ -405,3 +508,12 @@ const createStats = () => ({
     targetReached: false,
     samples: [] as RunSummary["samples"],
 });
+
+const wrapSignedAngle = (value: number): number => {
+    const twoPi = Math.PI * 2;
+    let wrapped = (value + Math.PI) % twoPi;
+    if (wrapped < 0) {
+        wrapped += twoPi;
+    }
+    return wrapped - Math.PI;
+};

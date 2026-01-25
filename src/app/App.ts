@@ -6,14 +6,20 @@ import { createModeScreen } from "./screens/ModeScreen";
 import { createSettingsScreen } from "./screens/SettingsScreen";
 import { createSummaryScreen } from "./screens/SummaryScreen";
 import { createPauseOverlay } from "./screens/PauseOverlay";
+import { createEndOverlay } from "./screens/EndOverlay";
 import type { Screen } from "./screens/types";
 import { Game } from "../game/Game";
 import { Map } from "../game/Map";
+import { getMapDefinition, mapDefinitions } from "../data/mvpMap";
 
 export class App {
     private readonly root: HTMLElement;
     private settings: Settings;
-    private modeSelection: ModeSelection = { mode: "training", thermalVisibility: "visible" };
+    private modeSelection: ModeSelection = {
+        mode: "training",
+        thermalVisibility: "visible",
+        mapId: mapDefinitions[0].id,
+    };
     private currentScreen: Screen | null = null;
     private game: Game | null = null;
     private pauseOverlay: ReturnType<typeof createPauseOverlay> | null = null;
@@ -71,7 +77,7 @@ export class App {
 
     private showSummary(summary: RunSummary): void {
         this.stopGame();
-        const map = new Map();
+        const map = new Map(getMapDefinition(summary.mapId));
         this.setScreen(
             createSummaryScreen(summary, map, {
                 onRepeat: () => this.startGame(this.modeSelection),
@@ -106,7 +112,11 @@ export class App {
             },
         });
 
-        container.append(canvas, pauseOverlay.element);
+        const endOverlay = createEndOverlay({
+            onContinue: () => this.exitRun(),
+        });
+
+        container.append(canvas, pauseOverlay.element, endOverlay.element);
 
         this.setScreen({ element: container });
 
@@ -117,6 +127,15 @@ export class App {
             audioEnabled: this.settings.audioEnabled,
             masterVolume: this.settings.masterVolume,
             touchControls: this.settings.touchControls,
+            wind: {
+                windEnabled: this.settings.windEnabled,
+                windSpeedMps: this.settings.windSpeedMps,
+                windDirDeg: this.settings.windDirDeg,
+                windIndicatorEnabled: this.settings.windIndicatorEnabled,
+                thermalDriftEnabled: this.settings.thermalDriftEnabled,
+                thermalDriftFactor: this.settings.thermalDriftFactor,
+            },
+            mapId: selection.mapId,
         });
 
         this.game = game;
@@ -124,6 +143,10 @@ export class App {
 
         game.setPauseCallback((paused) => {
             pauseOverlay.setVisible(paused);
+        });
+        game.setEndCallback((state) => {
+            pauseOverlay.setVisible(false);
+            endOverlay.setVisible(true, state);
         });
 
         game.start();
@@ -157,6 +180,14 @@ export class App {
             this.game.setAudioEnabled(this.settings.audioEnabled);
             this.game.setMasterVolume(this.settings.masterVolume);
             this.game.setTouchControlsMode(this.settings.touchControls);
+            this.game.setWindSettings({
+                windEnabled: this.settings.windEnabled,
+                windSpeedMps: this.settings.windSpeedMps,
+                windDirDeg: this.settings.windDirDeg,
+                windIndicatorEnabled: this.settings.windIndicatorEnabled,
+                thermalDriftEnabled: this.settings.thermalDriftEnabled,
+                thermalDriftFactor: this.settings.thermalDriftFactor,
+            });
         }
         if (this.pauseOverlay) {
             this.pauseOverlay.setAudioState(this.settings);

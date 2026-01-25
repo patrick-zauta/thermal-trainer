@@ -27,6 +27,20 @@ export const createSummaryScreen = (summary: RunSummary, map: Map, callbacks: Su
         statRow("Zeit im Steigen", formatDuration(summary.timeClimbSec)),
         statRow("Zeit im Sinken", formatDuration(summary.timeSinkSec)),
         statRow("Stall Warnungen", summary.stallCount.toString()),
+        ...(summary.wind.windEnabled
+            ? [
+                  statRow(
+                      "Wind",
+                      `${summary.wind.windSpeedMps.toFixed(1)} m/s ${Math.round(summary.wind.windDirDeg)} Grad`,
+                  ),
+                  statRow(
+                      "Thermik Drift",
+                      summary.wind.thermalDriftEnabled
+                          ? `ja ${summary.wind.thermalDriftFactor.toFixed(2)}`
+                          : "nein",
+                  ),
+              ]
+            : []),
         ...(summary.mode === "training"
             ? [statRow("Ziel erreicht", summary.targetReached ? "ja" : "nein")]
             : []),
@@ -91,9 +105,14 @@ const drawSummary = (canvas: HTMLCanvasElement, map: Map, summary: RunSummary): 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const transform = createFitTransform(canvas.width, canvas.height, map.worldWidth, map.worldHeight);
-    map.render(ctx, transform, { visibility: "visible", showLabels: false });
+    map.setWindSettings(summary.wind);
+    map.render(ctx, transform, summary.durationSec, { visibility: "visible", showLabels: false, showTurnpoints: true });
 
     drawTrack(ctx, transform, summary);
+
+    if (summary.wind.windEnabled && summary.wind.windIndicatorEnabled) {
+        drawWindArrow(ctx, canvas.width, canvas.height, summary.wind.windSpeedMps, summary.wind.windDirDeg);
+    }
 };
 
 const drawTrack = (ctx: CanvasRenderingContext2D, transform: WorldTransform, summary: RunSummary): void => {
@@ -125,6 +144,52 @@ const createFitTransform = (canvasWidth: number, canvasHeight: number, worldWidt
     const offsetX = (canvasWidth - worldWidth * scale) / 2;
     const offsetY = (canvasHeight - worldHeight * scale) / 2;
     return { a: scale, b: 0, c: 0, d: scale, offsetX, offsetY };
+};
+
+const drawWindArrow = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    windSpeedMps: number,
+    windDirDeg: number,
+): void => {
+    const padding = 16;
+    const arrowSize = 18;
+    const label = `Wind ${windSpeedMps.toFixed(1)} m/s ${Math.round(windDirDeg)} Grad`;
+    ctx.save();
+    ctx.font = "12px 'Space Grotesk', 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#4a433b";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    const textX = width - padding - arrowSize - 6;
+    const textY = height - padding;
+    ctx.fillText(label, textX, textY);
+
+    const centerX = width - padding - arrowSize / 2;
+    const centerY = height - padding - 10;
+    const angle = (windDirDeg * Math.PI) / 180;
+    const tailX = centerX - Math.cos(angle) * (arrowSize * 0.4);
+    const tailY = centerY - Math.sin(angle) * (arrowSize * 0.4);
+    const headX = centerX + Math.cos(angle) * (arrowSize * 0.6);
+    const headY = centerY + Math.sin(angle) * (arrowSize * 0.6);
+
+    ctx.strokeStyle = "#4a433b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(headX, headY);
+    ctx.stroke();
+
+    const headSize = 4;
+    const leftAngle = angle + Math.PI * 0.75;
+    const rightAngle = angle - Math.PI * 0.75;
+    ctx.beginPath();
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(headX + Math.cos(leftAngle) * headSize, headY + Math.sin(leftAngle) * headSize);
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(headX + Math.cos(rightAngle) * headSize, headY + Math.sin(rightAngle) * headSize);
+    ctx.stroke();
+    ctx.restore();
 };
 
 const varioColor = (vario: number): string => {

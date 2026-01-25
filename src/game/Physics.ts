@@ -1,4 +1,5 @@
 import { Map } from "./Map";
+import type { WindSettings } from "../app/types";
 
 export type FlightState = {
     x: number;
@@ -19,6 +20,7 @@ export type Telemetry = {
     integratedVario: number;
     verticalAir: number;
     speedKmh: number;
+    groundSpeedKmh: number;
     airspeedKmh: number;
     baseAirspeedKmh: number;
     headingDeg: number;
@@ -35,6 +37,10 @@ export type Telemetry = {
     turnRate: number;
     stall: boolean;
     speedbarAmount: number;
+    windSpeedMps: number;
+    windDirDeg: number;
+    windVecX: number;
+    windVecY: number;
 };
 
 const BRAKE_RAMP_RATE = 2.0;
@@ -93,6 +99,7 @@ export class Physics {
             integratedVario: -1,
             verticalAir: 0,
             speedKmh: 36,
+            groundSpeedKmh: 36,
             airspeedKmh: 36,
             baseAirspeedKmh: 36,
             headingDeg: 0,
@@ -109,6 +116,10 @@ export class Physics {
             turnRate: 0,
             stall: false,
             speedbarAmount: 0,
+            windSpeedMps: 0,
+            windDirDeg: 0,
+            windVecX: 0,
+            windVecY: 0,
         };
     }
 
@@ -133,6 +144,7 @@ export class Physics {
         targets: { leftTarget: number; rightTarget: number; speedbarTarget: number },
         map: Map,
         time: number,
+        wind: WindSettings,
     ): Telemetry {
         this.state.leftBrake = moveTowards(this.state.leftBrake, targets.leftTarget, BRAKE_RAMP_RATE * dt);
         this.state.rightBrake = moveTowards(this.state.rightBrake, targets.rightTarget, BRAKE_RAMP_RATE * dt);
@@ -177,19 +189,28 @@ export class Physics {
         this.state.headingRad = wrapAngle(this.state.headingRad + this.state.yawRateRad * dt);
         this.state.speedMps = speedMps;
 
-        this.state.x += Math.cos(this.state.headingRad) * speedMps * dt;
-        this.state.y += Math.sin(this.state.headingRad) * speedMps * dt;
+        const windVector = getWindVector(wind);
+        const airVecX = Math.cos(this.state.headingRad) * speedMps;
+        const airVecY = Math.sin(this.state.headingRad) * speedMps;
+        const groundVecX = airVecX + windVector.x;
+        const groundVecY = airVecY + windVector.y;
+
+        this.state.x += groundVecX * dt;
+        this.state.y += groundVecY * dt;
 
         this.state.x = clamp(this.state.x, 0, map.worldWidth);
         this.state.y = clamp(this.state.y, 0, map.worldHeight);
 
         this.state.altitudeM = Math.max(0, this.state.altitudeM + vario * dt);
 
+        const groundSpeedKmh = Math.hypot(groundVecX, groundVecY) * 3.6;
+
         this.telemetry = {
             vario,
             integratedVario,
             verticalAir,
-            speedKmh: airspeedKmh,
+            speedKmh: groundSpeedKmh,
+            groundSpeedKmh,
             airspeedKmh,
             baseAirspeedKmh,
             headingDeg: toHeadingDeg(this.state.headingRad),
@@ -206,6 +227,10 @@ export class Physics {
             turnRate: this.state.yawRateRad,
             stall,
             speedbarAmount: this.state.speedbarAmount,
+            windSpeedMps: wind.windEnabled ? wind.windSpeedMps : 0,
+            windDirDeg: wind.windEnabled ? wind.windDirDeg : 0,
+            windVecX: windVector.x,
+            windVecY: windVector.y,
         };
 
         return this.telemetry;
@@ -296,4 +321,15 @@ const wrapAngle = (value: number): number => {
 const toHeadingDeg = (headingRad: number): number => {
     const deg = (headingRad * 180) / Math.PI;
     return Math.round((deg + 360) % 360);
+};
+
+const getWindVector = (wind: WindSettings): { x: number; y: number } => {
+    if (!wind.windEnabled || wind.windSpeedMps <= 0) {
+        return { x: 0, y: 0 };
+    }
+    const dirRad = (wind.windDirDeg * Math.PI) / 180;
+    return {
+        x: Math.cos(dirRad) * wind.windSpeedMps,
+        y: Math.sin(dirRad) * wind.windSpeedMps,
+    };
 };
