@@ -26,6 +26,7 @@ type SinkField = SinkZone & {
 const THERMAL_COLORS = ["#e35b5b", "#f4a340", "#f5d86b"];
 const SINK_COLOR = "#6aa5ff";
 const BACKGROUND_COLOR = "#ffffff";
+const OUTER_SINK_COLOR = "rgba(170, 210, 255, 0.45)";
 const THERMAL_EDGE_SINK = -1;
 const THERMAL_FADE_OUT = 40;
 
@@ -98,6 +99,14 @@ export class Map {
             }
 
             for (const thermal of this.thermals) {
+                const outerRadius = Math.max(...thermal.rings.map((ring) => ring.radius));
+                const fadeLimit = outerRadius + THERMAL_FADE_OUT;
+                ctx.fillStyle = OUTER_SINK_COLOR;
+                ctx.beginPath();
+                ctx.arc(thermal.center.x, thermal.center.y, fadeLimit, 0, Math.PI * 2);
+                ctx.arc(thermal.center.x, thermal.center.y, outerRadius, 0, Math.PI * 2, true);
+                ctx.fill("evenodd");
+
                 const rings = [...thermal.rings].sort((a, b) => b.radius - a.radius);
                 rings.forEach((ring, index) => {
                     const colorIndex = rings.length - 1 - index;
