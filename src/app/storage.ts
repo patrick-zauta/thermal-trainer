@@ -27,12 +27,39 @@ export const loadSettings = (): Settings => {
         const touchControls = isTouchControlsMode(parsed.touchControls)
             ? parsed.touchControls
             : defaultSettings.touchControls;
+        const windEnabled = typeof parsed.windEnabled === "boolean" ? parsed.windEnabled : defaultSettings.windEnabled;
+        const windSpeedMps =
+            typeof parsed.windSpeedMps === "number" && Number.isFinite(parsed.windSpeedMps)
+                ? clamp(parsed.windSpeedMps, 0, 10)
+                : defaultSettings.windSpeedMps;
+        const windDirDeg =
+            typeof parsed.windDirDeg === "number" && Number.isFinite(parsed.windDirDeg)
+                ? clamp(Math.round(parsed.windDirDeg), 0, 359)
+                : defaultSettings.windDirDeg;
+        const windIndicatorEnabled =
+            typeof parsed.windIndicatorEnabled === "boolean"
+                ? parsed.windIndicatorEnabled
+                : defaultSettings.windIndicatorEnabled;
+        const thermalDriftEnabled =
+            typeof parsed.thermalDriftEnabled === "boolean"
+                ? parsed.thermalDriftEnabled
+                : defaultSettings.thermalDriftEnabled;
+        const thermalDriftFactor =
+            typeof parsed.thermalDriftFactor === "number" && Number.isFinite(parsed.thermalDriftFactor)
+                ? clamp(parsed.thermalDriftFactor, 0, 1)
+                : defaultSettings.thermalDriftFactor;
 
         return {
             audioEnabled,
             masterVolume,
             keybindings,
             touchControls,
+            windEnabled,
+            windSpeedMps,
+            windDirDeg,
+            windIndicatorEnabled,
+            thermalDriftEnabled,
+            thermalDriftFactor,
         };
     } catch {
         return defaultSettings;

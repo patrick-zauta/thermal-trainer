@@ -15,4 +15,10 @@ export const defaultSettings: Settings = {
     masterVolume: 0.6,
     keybindings: defaultKeybindings,
     touchControls: "auto",
+    windEnabled: false,
+    windSpeedMps: 0,
+    windDirDeg: 0,
+    windIndicatorEnabled: true,
+    thermalDriftEnabled: false,
+    thermalDriftFactor: 0.6,
 };

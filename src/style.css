@@ -197,6 +197,27 @@ select {
     background: #ffffff;
 }
 
+.inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.number-input {
+    width: 72px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    font: inherit;
+    background: #ffffff;
+}
+
+.btn.small {
+    padding: 6px 10px;
+    font-size: 12px;
+    box-shadow: none;
+}
+
 .section {
     display: flex;
     flex-direction: column;

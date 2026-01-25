@@ -10,6 +10,11 @@ type DebugMetrics = {
     vario: number;
     speedbarAmount: number;
     airspeedKmh: number;
+    groundspeedKmh: number;
+    windSpeedMps: number;
+    windDirDeg: number;
+    windVecX: number;
+    windVecY: number;
     totalBrake: number;
     diffBrake: number;
     turnRate: number;
@@ -33,7 +38,12 @@ type HudState = {
     targetReached: boolean;
     debug: boolean;
     touchControlsVisible: boolean;
+    nextTurnpoint: { name: string; distanceM: number; bearingRad: number } | null;
+    turnpointProgress: { completed: number; total: number };
     debugMetrics: DebugMetrics;
+    windIndicatorEnabled: boolean;
+    windSpeedMps: number;
+    windDirDeg: number;
 };
 
 const UI_FONT = "'Space Grotesk', 'Trebuchet MS', sans-serif";
@@ -148,6 +158,14 @@ export class Hud {
             labelFont,
             valueFont,
         );
+
+        if (state.turnpointProgress.total > 0) {
+            this.drawTurnpointProgress(ctx, width, barHeight, state.turnpointProgress, compact);
+        }
+
+        if (state.windIndicatorEnabled && state.windSpeedMps > 0) {
+            this.drawWindIndicator(ctx, width, barHeight, state.windSpeedMps, state.windDirDeg, compact);
+        }
     }
 
     private drawGroup(
@@ -249,6 +267,10 @@ export class Hud {
         );
 
         this.drawVarioDot(ctx, width - 18, y + (compact ? 14 : 18), state.telemetry.vario);
+
+        if (state.nextTurnpoint) {
+            this.drawTurnpointIndicator(ctx, width, y, panelHeight, state.nextTurnpoint, compact);
+        }
     }
 
     private drawCenteredBanner(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
@@ -288,6 +310,9 @@ export class Hud {
             `vario: ${metrics.vario.toFixed(2)}`,
             `speedbarAmount: ${metrics.speedbarAmount.toFixed(2)}`,
             `airspeedKmh: ${metrics.airspeedKmh.toFixed(1)}`,
+            `groundKmh: ${metrics.groundspeedKmh.toFixed(1)}`,
+            `wind: ${metrics.windSpeedMps.toFixed(1)} m/s ${Math.round(metrics.windDirDeg)} Grad`,
+            `windVec: ${metrics.windVecX.toFixed(2)} ${metrics.windVecY.toFixed(2)}`,
             `totalBrake: ${metrics.totalBrake.toFixed(2)}`,
             `diffBrake: ${metrics.diffBrake.toFixed(2)}`,
             `u: ${metrics.turnInput.toFixed(2)}`,
@@ -299,7 +324,7 @@ export class Hud {
 
         ctx.save();
         ctx.fillStyle = "rgba(20, 20, 20, 0.75)";
-        ctx.fillRect(16, topBarHeight + 12, 220, 16 + lines.length * 16);
+        ctx.fillRect(16, topBarHeight + 12, 252, 16 + lines.length * 16);
         ctx.fillStyle = "#f5f5f5";
         ctx.font = `12px ${UI_FONT}`;
         ctx.textAlign = "left";
@@ -307,6 +332,119 @@ export class Hud {
         lines.forEach((line, index) => {
             ctx.fillText(line, 24, topBarHeight + 20 + index * 16);
         });
+        ctx.restore();
+    }
+
+    private drawWindIndicator(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        barHeight: number,
+        windSpeedMps: number,
+        windDirDeg: number,
+        compact: boolean,
+    ): void {
+        const arrowSize = compact ? 14 : 18;
+        const padding = compact ? 10 : 14;
+        const text = `Wind ${windSpeedMps.toFixed(1)} m/s ${Math.round(windDirDeg)} Grad`;
+        ctx.font = `${compact ? 11 : 12}px ${UI_FONT}`;
+        ctx.fillStyle = "#5a554c";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        const textX = width - padding - arrowSize - 6;
+        const centerY = barHeight / 2;
+        ctx.fillText(text, textX, centerY);
+
+        const centerX = width - padding - arrowSize / 2;
+        const angle = (windDirDeg * Math.PI) / 180;
+        const tailX = centerX - Math.cos(angle) * (arrowSize * 0.4);
+        const tailY = centerY - Math.sin(angle) * (arrowSize * 0.4);
+        const headX = centerX + Math.cos(angle) * (arrowSize * 0.6);
+        const headY = centerY + Math.sin(angle) * (arrowSize * 0.6);
+
+        ctx.strokeStyle = "#5a554c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(headX, headY);
+        ctx.stroke();
+
+        const headSize = 4;
+        const leftAngle = angle + Math.PI * 0.75;
+        const rightAngle = angle - Math.PI * 0.75;
+        ctx.beginPath();
+        ctx.moveTo(headX, headY);
+        ctx.lineTo(headX + Math.cos(leftAngle) * headSize, headY + Math.sin(leftAngle) * headSize);
+        ctx.moveTo(headX, headY);
+        ctx.lineTo(headX + Math.cos(rightAngle) * headSize, headY + Math.sin(rightAngle) * headSize);
+        ctx.stroke();
+    }
+
+    private drawTurnpointIndicator(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        panelY: number,
+        panelHeight: number,
+        info: { name: string; distanceM: number; bearingRad: number },
+        compact: boolean,
+    ): void {
+        const arrowSize = compact ? 32 : 40;
+        const showText = true;
+        const centerX = width / 2;
+        const centerY = panelY + panelHeight / 2;
+        const angle = info.bearingRad - Math.PI / 2;
+
+        ctx.save();
+        ctx.strokeStyle = "#2f5c8c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, arrowSize * 0.6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const tailX = centerX - Math.cos(angle) * (arrowSize * 0.35);
+        const tailY = centerY - Math.sin(angle) * (arrowSize * 0.35);
+        const headX = centerX + Math.cos(angle) * (arrowSize * 0.55);
+        const headY = centerY + Math.sin(angle) * (arrowSize * 0.55);
+        ctx.beginPath();
+        ctx.moveTo(tailX, tailY);
+        ctx.lineTo(headX, headY);
+        ctx.stroke();
+
+        const headSize = 4;
+        const leftAngle = angle + Math.PI * 0.75;
+        const rightAngle = angle - Math.PI * 0.75;
+        ctx.beginPath();
+        ctx.moveTo(headX, headY);
+        ctx.lineTo(headX + Math.cos(leftAngle) * headSize, headY + Math.sin(leftAngle) * headSize);
+        ctx.moveTo(headX, headY);
+        ctx.lineTo(headX + Math.cos(rightAngle) * headSize, headY + Math.sin(rightAngle) * headSize);
+        ctx.stroke();
+
+        if (showText) {
+            const text = `${info.name} ${Math.round(info.distanceM)} m`;
+            ctx.fillStyle = "#2f5c8c";
+            ctx.font = `${compact ? 12 : 14}px ${UI_FONT}`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText(text, centerX, centerY + arrowSize * 0.6 + 4);
+        }
+
+        ctx.restore();
+    }
+
+    private drawTurnpointProgress(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        barHeight: number,
+        progress: { completed: number; total: number },
+        compact: boolean,
+    ): void {
+        const text = `TP ${progress.completed}/${progress.total}`;
+        ctx.save();
+        ctx.fillStyle = "#5a554c";
+        ctx.font = `${compact ? 12 : 13}px ${UI_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(text, width / 2, barHeight - 6);
         ctx.restore();
     }
 

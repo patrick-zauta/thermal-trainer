@@ -26,6 +26,10 @@ npm run dev
 - Restart ist nur ueber das Pause Menue moeglich.
 - Touch Steuerung ist auf Mobile verfuegbar und kann in Einstellungen auf Auto, Ein oder Aus gesetzt werden.
 - Turn Modell nutzt yaw, slip und bank fuer traegeres Kurvenverhalten, Vollkreis ca 13 Sekunden bei Trim.
+- Wind kann in Einstellungen aktiviert werden, Richtung ist die Downwind Richtung in Grad.
+- Thermik Drift kann optional aktiviert werden und folgt dem Wind mit Faktor.
+- Mehrere Karten mit Turnpoints und Zielbereich sind im Modus Auswahl verfuegbar.
+- Bei 0 m Hoehe erscheint Game Over, bei Zielerreichung ein Winner Screen, danach die Uebersicht.
 
 ## Mobile Steuerung
 - Linker Slider: Bremse links

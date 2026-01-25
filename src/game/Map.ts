@@ -1,6 +1,6 @@
-import type { Point, SinkZone, Thermal } from "../data/mvpMap";
-import { sinkZones, thermals, worldHeight, worldWidth } from "../data/mvpMap";
-import type { ThermalVisibility } from "../app/types";
+import type { MapDefinition, MapId, Point, SinkZone, TargetZone, Thermal, Turnpoint } from "../data/mvpMap";
+import { worldHeight, worldWidth } from "../data/mvpMap";
+import type { ThermalVisibility, WindSettings } from "../app/types";
 
 export type WorldTransform = {
     a: number;
@@ -26,13 +26,12 @@ type SinkField = SinkZone & {
 const THERMAL_COLORS = ["#e35b5b", "#f4a340", "#f5d86b"];
 const SINK_COLOR = "#6aa5ff";
 const BACKGROUND_COLOR = "#ffffff";
-const OUTER_SINK_COLOR = "rgba(170, 210, 255, 0.45)";
-const THERMAL_EDGE_SINK = -1;
 const THERMAL_FADE_OUT = 40;
 
 export type MapRenderOptions = {
     visibility: ThermalVisibility;
     showLabels: boolean;
+    showTurnpoints: boolean;
 };
 
 export class Map {
@@ -40,15 +39,29 @@ export class Map {
     public readonly worldHeight = worldHeight;
     private readonly thermals: ThermalField[];
     private readonly sinkZones: SinkField[];
+    private readonly turnpoints: Turnpoint[];
+    private readonly target: TargetZone;
+    private readonly id: MapId;
+    private windSettings: WindSettings = {
+        windEnabled: false,
+        windSpeedMps: 0,
+        windDirDeg: 0,
+        windIndicatorEnabled: true,
+        thermalDriftEnabled: false,
+        thermalDriftFactor: 0.6,
+    };
 
-    public constructor() {
-        this.thermals = thermals.map((thermal, index) => ({
+    public constructor(definition: MapDefinition) {
+        this.id = definition.id;
+        this.target = definition.target;
+        this.turnpoints = definition.turnpoints;
+        this.thermals = definition.thermals.map((thermal, index) => ({
             ...thermal,
             amp: index === 0 ? 0.14 : 0.18,
             w: index === 0 ? 0.35 : 0.5,
             phase: index === 0 ? 0.3 : 1.2,
         }));
-        this.sinkZones = sinkZones.map((zone, index) => ({
+        this.sinkZones = definition.sinkZones.map((zone, index) => ({
             ...zone,
             amp: 0.08,
             w: 0.42 + index * 0.1,
@@ -56,16 +69,35 @@ export class Map {
         }));
     }
 
+    public getId(): MapId {
+        return this.id;
+    }
+
+    public getTarget(): TargetZone {
+        return this.target;
+    }
+
+    public getTurnpoints(): Turnpoint[] {
+        return this.turnpoints;
+    }
+
+    public setWindSettings(settings: WindSettings): void {
+        this.windSettings = { ...settings };
+    }
+
     public getVerticalAir(x: number, y: number, time: number): number {
+        const drift = this.getDriftOffset(time);
         for (const zone of this.sinkZones) {
-            const dist = this.distance(x, y, zone.center);
+            const center = this.applyDrift(zone.center, drift);
+            const dist = this.distance(x, y, center);
             if (dist <= zone.radius) {
                 return zone.verticalAir * dynamicFactor(time, zone.amp, zone.w, zone.phase);
             }
         }
 
         for (const thermal of this.thermals) {
-            const dist = this.distance(x, y, thermal.center);
+            const center = this.applyDrift(thermal.center, drift);
+            const dist = this.distance(x, y, center);
             const lift = this.getThermalVerticalAir(dist, thermal, time);
             if (lift !== null) {
                 return lift;
@@ -75,7 +107,12 @@ export class Map {
         return 0;
     }
 
-    public render(ctx: CanvasRenderingContext2D, transform: WorldTransform, options: MapRenderOptions): void {
+    public render(
+        ctx: CanvasRenderingContext2D,
+        transform: WorldTransform,
+        time: number,
+        options: MapRenderOptions,
+    ): void {
         ctx.save();
         ctx.setTransform(transform.a, transform.b, transform.c, transform.d, transform.offsetX, transform.offsetY);
 
@@ -83,10 +120,12 @@ export class Map {
         ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
 
         if (options.visibility !== "hidden") {
+            const drift = this.getDriftOffset(time);
             for (const zone of this.sinkZones) {
+                const center = this.applyDrift(zone.center, drift);
                 ctx.fillStyle = SINK_COLOR;
                 ctx.beginPath();
-                ctx.arc(zone.center.x, zone.center.y, zone.radius, 0, Math.PI * 2);
+                ctx.arc(center.x, center.y, zone.radius, 0, Math.PI * 2);
                 ctx.fill();
 
                 if (options.showLabels) {
@@ -94,25 +133,18 @@ export class Map {
                     ctx.font = "16px 'Space Grotesk', 'Trebuchet MS', sans-serif";
                     ctx.textAlign = "center";
                     ctx.textBaseline = "middle";
-                    ctx.fillText("-2 m/s", zone.center.x, zone.center.y);
+                    ctx.fillText("-2 m/s", center.x, center.y);
                 }
             }
 
             for (const thermal of this.thermals) {
-                const outerRadius = Math.max(...thermal.rings.map((ring) => ring.radius));
-                const fadeLimit = outerRadius + THERMAL_FADE_OUT;
-                ctx.fillStyle = OUTER_SINK_COLOR;
-                ctx.beginPath();
-                ctx.arc(thermal.center.x, thermal.center.y, fadeLimit, 0, Math.PI * 2);
-                ctx.arc(thermal.center.x, thermal.center.y, outerRadius, 0, Math.PI * 2, true);
-                ctx.fill("evenodd");
-
+                const center = this.applyDrift(thermal.center, drift);
                 const rings = [...thermal.rings].sort((a, b) => b.radius - a.radius);
                 rings.forEach((ring, index) => {
                     const colorIndex = rings.length - 1 - index;
                     ctx.fillStyle = THERMAL_COLORS[colorIndex] ?? THERMAL_COLORS[2];
                     ctx.beginPath();
-                    ctx.arc(thermal.center.x, thermal.center.y, ring.radius, 0, Math.PI * 2);
+                    ctx.arc(center.x, center.y, ring.radius, 0, Math.PI * 2);
                     ctx.fill();
                 });
 
@@ -126,12 +158,16 @@ export class Map {
                         ctx.textBaseline = "middle";
                         ctx.fillText(
                             label,
-                            thermal.center.x,
-                            thermal.center.y + (index - 1) * labelOffset,
+                            center.x,
+                            center.y + (index - 1) * labelOffset,
                         );
                     });
                 }
             }
+        }
+
+        if (options.showTurnpoints) {
+            this.drawTurnpoints(ctx, options.showLabels);
         }
 
         ctx.restore();
@@ -144,15 +180,28 @@ export class Map {
     }
 
     private getThermalVerticalAir(dist: number, thermal: ThermalField, time: number): number | null {
-        const outerRadius = Math.max(...thermal.rings.map((ring) => ring.radius));
-        const peak = Math.max(...thermal.rings.map((ring) => ring.verticalAir));
+        const sortedRings = [...thermal.rings].sort((a, b) => a.radius - b.radius);
+        const outerRadius = sortedRings[sortedRings.length - 1]?.radius ?? 0;
         const fadeLimit = outerRadius + THERMAL_FADE_OUT;
         if (dist > fadeLimit) {
             return null;
         }
 
-        const t = clamp(dist / outerRadius, 0, 1);
-        const base = lerp(peak, THERMAL_EDGE_SINK, smoothstep(0, 1, t));
+        let base = 0;
+        if (dist <= sortedRings[0].radius) {
+            base = sortedRings[0].verticalAir;
+        } else if (dist <= outerRadius) {
+            for (let i = 0; i < sortedRings.length - 1; i += 1) {
+                const inner = sortedRings[i];
+                const outer = sortedRings[i + 1];
+                if (dist >= inner.radius && dist <= outer.radius) {
+                    const t = (dist - inner.radius) / Math.max(outer.radius - inner.radius, 1);
+                    base = lerp(inner.verticalAir, outer.verticalAir, t);
+                    break;
+                }
+            }
+        }
+
         const factor = dynamicFactor(time, thermal.amp, thermal.w, thermal.phase);
         let value = base * factor;
 
@@ -162,6 +211,49 @@ export class Map {
         }
 
         return value;
+    }
+
+    private drawTurnpoints(ctx: CanvasRenderingContext2D, showLabels: boolean): void {
+        for (const point of this.turnpoints) {
+            ctx.fillStyle = "rgba(80, 140, 190, 0.2)";
+            ctx.strokeStyle = "#2f5c8c";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(point.center.x, point.center.y, point.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#2f5c8c";
+            ctx.font = "12px 'Space Grotesk', 'Trebuchet MS', sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`min ${point.minAltitudeM} m`, point.center.x, point.center.y);
+
+            if (showLabels) {
+                ctx.font = "14px 'Space Grotesk', 'Trebuchet MS', sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "bottom";
+                ctx.fillText(point.name, point.center.x, point.center.y - point.radius - 6);
+            }
+        }
+    }
+
+    private getDriftOffset(time: number): Point {
+        if (!this.windSettings.windEnabled || !this.windSettings.thermalDriftEnabled || time <= 0) {
+            return { x: 0, y: 0 };
+        }
+        const dirRad = (this.windSettings.windDirDeg * Math.PI) / 180;
+        const driftSpeed = this.windSettings.windSpeedMps * this.windSettings.thermalDriftFactor;
+        return {
+            x: Math.cos(dirRad) * driftSpeed * time,
+            y: Math.sin(dirRad) * driftSpeed * time,
+        };
+    }
+
+    private applyDrift(center: Point, drift: Point): Point {
+        const x = clamp(center.x + drift.x, 0, this.worldWidth);
+        const y = clamp(center.y + drift.y, 0, this.worldHeight);
+        return { x, y };
     }
 }
 

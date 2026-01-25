@@ -1,4 +1,5 @@
 import type { ModeSelection, ThermalVisibility } from "../types";
+import { mapDefinitions } from "../../data/mvpMap";
 import type { Screen } from "./types";
 
 type ModeScreenCallbacks = {
@@ -46,24 +47,43 @@ export const createModeScreen = (initial: ModeSelection, callbacks: ModeScreenCa
 
     visibilityGroup.append(visibilityLabel, visibilitySelect);
 
+    const mapGroup = document.createElement("div");
+    mapGroup.className = "option-group";
+
+    const mapLabel = document.createElement("p");
+    mapLabel.className = "option-label";
+    mapLabel.textContent = "Karte";
+
+    const mapSelect = document.createElement("select");
+    mapSelect.className = "select";
+    mapDefinitions.forEach((map) => {
+        const entry = document.createElement("option");
+        entry.value = map.id;
+        entry.textContent = map.name;
+        mapSelect.appendChild(entry);
+    });
+
+    mapGroup.append(mapLabel, mapSelect);
+
     const buttonRow = document.createElement("div");
     buttonRow.className = "button-row";
 
     const startButton = createButton("Start", () => {
         const mode = trainingOption.input.checked ? "training" : "free";
         const visibility = mode === "training" ? (visibilitySelect.value as ThermalVisibility) : "hidden";
-        callbacks.onStart({ mode, thermalVisibility: visibility });
+        callbacks.onStart({ mode, thermalVisibility: visibility, mapId: mapSelect.value as ModeSelection["mapId"] });
     });
     const backButton = createButton("Zurueck", callbacks.onBack, "secondary");
 
     buttonRow.append(startButton, backButton);
 
-    card.append(title, modeGroup, visibilityGroup, buttonRow);
+    card.append(title, modeGroup, visibilityGroup, mapGroup, buttonRow);
     screen.append(card);
 
     trainingOption.input.checked = initial.mode === "training";
     freeOption.input.checked = initial.mode === "free";
     visibilitySelect.value = initial.thermalVisibility;
+    mapSelect.value = initial.mapId;
 
     const syncVisibility = (): void => {
         const active = trainingOption.input.checked;

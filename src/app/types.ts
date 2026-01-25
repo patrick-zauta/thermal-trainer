@@ -1,3 +1,5 @@
+import type { MapId } from "../data/mvpMap";
+
 export type ScreenId = "home" | "mode" | "settings" | "game" | "summary";
 
 export type ModeId = "training" | "free";
@@ -5,6 +7,15 @@ export type ModeId = "training" | "free";
 export type ThermalVisibility = "visible" | "rings" | "hidden";
 
 export type TouchControlsMode = "auto" | "on" | "off";
+
+export type WindSettings = {
+    windEnabled: boolean;
+    windSpeedMps: number;
+    windDirDeg: number;
+    windIndicatorEnabled: boolean;
+    thermalDriftEnabled: boolean;
+    thermalDriftFactor: number;
+};
 
 export type Action =
     | "LeftBrakeIncrease"
@@ -22,11 +33,18 @@ export type Settings = {
     masterVolume: number;
     keybindings: Keybindings;
     touchControls: TouchControlsMode;
+    windEnabled: boolean;
+    windSpeedMps: number;
+    windDirDeg: number;
+    windIndicatorEnabled: boolean;
+    thermalDriftEnabled: boolean;
+    thermalDriftFactor: number;
 };
 
 export type ModeSelection = {
     mode: ModeId;
     thermalVisibility: ThermalVisibility;
+    mapId: MapId;
 };
 
 export type TrackSample = {
@@ -39,6 +57,7 @@ export type TrackSample = {
 
 export type RunSummary = {
     mode: ModeId;
+    mapId: MapId;
     durationSec: number;
     startAltitudeM: number;
     endAltitudeM: number;
@@ -50,4 +69,5 @@ export type RunSummary = {
     stallCount: number;
     targetReached: boolean;
     samples: TrackSample[];
+    wind: WindSettings;
 };
