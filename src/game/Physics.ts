@@ -32,8 +32,7 @@ export type Telemetry = {
 const BRAKE_RAMP_RATE = 2.0;
 const SPEEDBAR_RAMP_RATE = 0.4;
 const TURN_RATE = 1.6;
-const TURN_SINK = 0.9;
-const BRAKE_RESPONSE_EXP = 1.6;
+const TURN_SINK = 0.4;
 const TURN_RESPONSE_EXP = 1.4;
 
 const MIN_SPEED_KMH = 18;
@@ -44,13 +43,13 @@ const MIN_TURN_RADIUS_M = 15;
 const VARIO_WINDOW_SEC = 18;
 
 const POLAR_TABLE: Array<{ speed: number; sink: number }> = [
-    { speed: 24, sink: 1.25 },
-    { speed: 28, sink: 1.0 },
-    { speed: 30, sink: 0.95 },
-    { speed: 33, sink: 0.98 },
-    { speed: 36, sink: 1.05 },
-    { speed: 40, sink: 1.18 },
-    { speed: 45, sink: 1.35 },
+    { speed: 24, sink: 1.15 },
+    { speed: 28, sink: 0.95 },
+    { speed: 30, sink: 0.9 },
+    { speed: 33, sink: 0.95 },
+    { speed: 36, sink: 1.0 },
+    { speed: 40, sink: 1.12 },
+    { speed: 45, sink: 1.25 },
 ];
 
 export class Physics {
@@ -81,9 +80,9 @@ export class Physics {
             headingDeg: 0,
             totalBrake: 0,
             diffBrake: 0,
-            sinkPolar: 1.05,
+            sinkPolar: 1.0,
             brakePenalty: 0,
-            sinkGlider: 1.05,
+            sinkGlider: 1.0,
             turnRate: 0,
             stall: false,
             speedbarAmount: 0,
