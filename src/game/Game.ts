@@ -252,6 +252,11 @@ export class Game {
                 totalBrake: this.telemetry.totalBrake,
                 diffBrake: this.telemetry.diffBrake,
                 turnRate: this.telemetry.turnRate,
+                turnInput: this.telemetry.turnInput,
+                rTarget: this.telemetry.rTarget,
+                yawRateRad: this.telemetry.yawRateRad,
+                slipBeta: this.telemetry.slipBeta,
+                bankPhiRad: this.telemetry.bankPhiRad,
             },
         });
 

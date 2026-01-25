@@ -13,6 +13,11 @@ type DebugMetrics = {
     totalBrake: number;
     diffBrake: number;
     turnRate: number;
+    turnInput: number;
+    rTarget: number;
+    yawRateRad: number;
+    slipBeta: number;
+    bankPhiRad: number;
 };
 
 type HudState = {
@@ -285,7 +290,11 @@ export class Hud {
             `airspeedKmh: ${metrics.airspeedKmh.toFixed(1)}`,
             `totalBrake: ${metrics.totalBrake.toFixed(2)}`,
             `diffBrake: ${metrics.diffBrake.toFixed(2)}`,
-            `turnRate: ${metrics.turnRate.toFixed(2)}`,
+            `u: ${metrics.turnInput.toFixed(2)}`,
+            `rTarget: ${metrics.rTarget.toFixed(2)}`,
+            `yawRate: ${metrics.yawRateRad.toFixed(2)}`,
+            `slipBeta: ${metrics.slipBeta.toFixed(2)}`,
+            `bankPhi: ${radToDeg(metrics.bankPhiRad).toFixed(1)} deg`,
         ];
 
         ctx.save();
@@ -326,4 +335,8 @@ const selectVarioColor = (vario: number): string => {
 const formatSigned = (value: number): string => {
     const rounded = value.toFixed(1);
     return value >= 0 ? `+${rounded}` : rounded;
+};
+
+const radToDeg = (value: number): number => {
+    return (value * 180) / Math.PI;
 };
