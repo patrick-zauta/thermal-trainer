@@ -53,20 +53,25 @@ export class Hud {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        const compact = width < 720 || height < 520;
-        const topBarHeight = compact ? 46 : 56;
-        const bottomPanelHeight = compact ? 60 : 72;
-        const sidePanelWidth = compact ? 104 : 120;
-        const showSidePanels = !state.touchControlsVisible && !compact && width >= 860;
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = width / dpr;
+        const cssHeight = height / dpr;
+        const compact = cssWidth < 720 || cssHeight < 520;
+        const mobile = state.touchControlsVisible || cssWidth < 900 || cssHeight < 600;
+        const uiScale = mobile ? dpr * 1.15 : 1;
+        const topBarHeight = (compact ? 46 : 56) * uiScale;
+        const bottomPanelHeight = (compact ? 60 : 72) * uiScale;
+        const sidePanelWidth = (compact ? 104 : 120) * uiScale;
+        const showSidePanels = !state.touchControlsVisible && !compact && cssWidth >= 860;
 
-        this.drawTopBar(ctx, width, state, topBarHeight, compact);
+        this.drawTopBar(ctx, width, state, topBarHeight, compact, uiScale);
 
         if (showSidePanels) {
             const panelY = topBarHeight;
             const panelHeight = Math.max(0, height - topBarHeight - bottomPanelHeight);
             this.drawSidePanel(
                 ctx,
-                16,
+                16 * uiScale,
                 panelY,
                 panelHeight,
                 sidePanelWidth,
@@ -74,10 +79,11 @@ export class Hud {
                 state.leftBrake,
                 state.leftBrakeTarget,
                 compact,
+                uiScale,
             );
             this.drawSidePanel(
                 ctx,
-                width - sidePanelWidth - 16,
+                width - sidePanelWidth - 16 * uiScale,
                 panelY,
                 panelHeight,
                 sidePanelWidth,
@@ -85,19 +91,20 @@ export class Hud {
                 state.rightBrake,
                 state.rightBrakeTarget,
                 compact,
+                uiScale,
             );
         }
 
-        this.drawBottomPanel(ctx, width, height, state, bottomPanelHeight, compact);
+        this.drawBottomPanel(ctx, width, height, state, bottomPanelHeight, compact, uiScale);
 
         if (state.stall) {
-            this.drawCenteredBanner(ctx, width, height, "STALL WARNUNG");
+            this.drawCenteredBanner(ctx, width, height, "STALL WARNUNG", uiScale);
         } else if (state.targetReached) {
-            this.drawCenteredBanner(ctx, width, height, "ZIEL ERREICHT");
+            this.drawCenteredBanner(ctx, width, height, "ZIEL ERREICHT", uiScale);
         }
 
         if (state.debug) {
-            this.drawDebugOverlay(ctx, state.debugMetrics, topBarHeight);
+            this.drawDebugOverlay(ctx, state.debugMetrics, topBarHeight, uiScale);
         }
 
         ctx.restore();
@@ -109,6 +116,7 @@ export class Hud {
         state: HudState,
         barHeight: number,
         compact: boolean,
+        uiScale: number,
     ): void {
         ctx.fillStyle = "#f5f3ef";
         ctx.fillRect(0, 0, width, barHeight);
@@ -116,55 +124,58 @@ export class Hud {
         ctx.strokeRect(0, 0, width, barHeight);
 
         const groupWidth = width / 3;
-        const labelFont = `${compact ? 11 : 12}px ${UI_FONT}`;
-        const valueFont = `${compact ? 16 : 18}px ${UI_FONT}`;
+        const labelFont = `${(compact ? 11 : 12) * uiScale}px ${UI_FONT}`;
+        const valueFont = `${(compact ? 16 : 18) * uiScale}px ${UI_FONT}`;
 
         ctx.fillStyle = "#4a433b";
         ctx.textBaseline = "top";
 
-        const textOffset = compact ? 6 : 8;
+        const textOffset = (compact ? 6 : 8) * uiScale;
         this.drawGroup(
             ctx,
-            16,
+            16 * uiScale,
             textOffset,
             groupWidth - 32,
             "Hoehe",
             `${Math.round(state.altitudeM)} m`,
             labelFont,
             valueFont,
+            16 * uiScale,
         );
 
         const headingText = `${state.telemetry.headingDeg} Grad`;
         this.drawGroup(
             ctx,
-            groupWidth + 16,
+            groupWidth + 16 * uiScale,
             textOffset,
             groupWidth - 32,
             "Kurs",
             headingText,
             labelFont,
             valueFont,
+            16 * uiScale,
         );
 
         const speedbarStatus = this.speedbarStatus(state.telemetry.speedbarAmount, state.speedbarTarget);
         const speedText = `${Math.round(state.telemetry.speedKmh)} km/h  ${speedbarStatus}`;
         this.drawGroup(
             ctx,
-            groupWidth * 2 + 16,
+            groupWidth * 2 + 16 * uiScale,
             textOffset,
             groupWidth - 32,
             "Speed",
             speedText,
             labelFont,
             valueFont,
+            16 * uiScale,
         );
 
         if (state.turnpointProgress.total > 0) {
-            this.drawTurnpointProgress(ctx, width, barHeight, state.turnpointProgress, compact);
+            this.drawTurnpointProgress(ctx, width, barHeight, state.turnpointProgress, compact, uiScale);
         }
 
         if (state.windIndicatorEnabled && state.windSpeedMps > 0) {
-            this.drawWindIndicator(ctx, width, barHeight, state.windSpeedMps, state.windDirDeg, compact);
+            this.drawWindIndicator(ctx, width, barHeight, state.windSpeedMps, state.windDirDeg, compact, uiScale);
         }
     }
 
@@ -177,6 +188,7 @@ export class Hud {
         value: string,
         labelFont: string,
         valueFont: string,
+        lineGap: number,
     ): void {
         ctx.font = labelFont;
         ctx.fillStyle = "#7a7267";
@@ -185,7 +197,7 @@ export class Hud {
 
         ctx.font = valueFont;
         ctx.fillStyle = "#1d1b18";
-        ctx.fillText(value, x, y + 16, width);
+        ctx.fillText(value, x, y + lineGap, width);
     }
 
     private drawSidePanel(
@@ -198,22 +210,23 @@ export class Hud {
         value: number,
         target: number,
         compact: boolean,
+        uiScale: number,
     ): void {
         ctx.fillStyle = "#f5f3ef";
         ctx.fillRect(x, y, panelWidth, panelHeight);
         ctx.strokeStyle = "#d3d0cb";
         ctx.strokeRect(x, y, panelWidth, panelHeight);
 
-        ctx.font = `${compact ? 12 : 13}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 12 : 13) * uiScale}px ${UI_FONT}`;
         ctx.fillStyle = "#2a2a2a";
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(label, x + panelWidth / 2, y + 10);
+        ctx.fillText(label, x + panelWidth / 2, y + 10 * uiScale);
 
-        const barWidth = 32;
+        const barWidth = 32 * uiScale;
         const barX = x + (panelWidth - barWidth) / 2;
-        const barY = y + 34;
-        const barHeight = Math.max(0, panelHeight - 64);
+        const barY = y + 34 * uiScale;
+        const barHeight = Math.max(0, panelHeight - 64 * uiScale);
 
         ctx.fillStyle = "#d8d5cf";
         ctx.fillRect(barX, barY, barWidth, barHeight);
@@ -230,10 +243,10 @@ export class Hud {
         ctx.lineTo(barX + barWidth + 4, targetY);
         ctx.stroke();
 
-        ctx.font = `${compact ? 12 : 14}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 12 : 14) * uiScale}px ${UI_FONT}`;
         ctx.fillStyle = "#1d1b18";
         ctx.textBaseline = "alphabetic";
-        ctx.fillText(`${Math.round(value * 100)}%`, x + panelWidth / 2, y + panelHeight - 12);
+        ctx.fillText(`${Math.round(value * 100)}%`, x + panelWidth / 2, y + panelHeight - 12 * uiScale);
     }
 
     private drawBottomPanel(
@@ -243,6 +256,7 @@ export class Hud {
         state: HudState,
         panelHeight: number,
         compact: boolean,
+        uiScale: number,
     ): void {
         const y = height - panelHeight;
         ctx.fillStyle = "#f5f3ef";
@@ -252,54 +266,71 @@ export class Hud {
 
         const varioColor = selectVarioColor(state.telemetry.vario);
         ctx.fillStyle = varioColor;
-        ctx.font = `${compact ? 20 : 26}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 20 : 26) * uiScale}px ${UI_FONT}`;
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(`Vario ${formatSigned(state.telemetry.vario)} m/s`, 18, y + panelHeight / 2);
+        ctx.fillText(`Vario ${formatSigned(state.telemetry.vario)} m/s`, 18 * uiScale, y + panelHeight / 2);
 
         ctx.fillStyle = "#5a554c";
-        ctx.font = `${compact ? 13 : 16}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 13 : 16) * uiScale}px ${UI_FONT}`;
         ctx.textAlign = "right";
         ctx.fillText(
             `Int 18s ${formatSigned(state.telemetry.integratedVario)} m/s`,
-            width - 18,
+            width - 18 * uiScale,
             y + panelHeight / 2,
         );
 
-        this.drawVarioDot(ctx, width - 18, y + (compact ? 14 : 18), state.telemetry.vario);
+        this.drawVarioDot(
+            ctx,
+            width - 18 * uiScale,
+            y + (compact ? 14 : 18) * uiScale,
+            state.telemetry.vario,
+            5 * uiScale,
+        );
 
         if (state.nextTurnpoint) {
-            this.drawTurnpointIndicator(ctx, width, y, panelHeight, state.nextTurnpoint, compact);
+            this.drawTurnpointIndicator(ctx, width, y, panelHeight, state.nextTurnpoint, compact, uiScale);
         }
     }
 
-    private drawCenteredBanner(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
-        const bannerWidth = 240;
-        const bannerHeight = 56;
+    private drawCenteredBanner(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        height: number,
+        text: string,
+        uiScale: number,
+    ): void {
+        const bannerWidth = 240 * uiScale;
+        const bannerHeight = 56 * uiScale;
         const x = (width - bannerWidth) / 2;
         const y = (height - bannerHeight) / 2;
         ctx.fillStyle = "rgba(30, 30, 30, 0.72)";
         ctx.fillRect(x, y, bannerWidth, bannerHeight);
         ctx.strokeStyle = "#d0d0d0";
         ctx.strokeRect(x, y, bannerWidth, bannerHeight);
-        ctx.font = `18px ${UI_FONT}`;
+        ctx.font = `${18 * uiScale}px ${UI_FONT}`;
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(text, width / 2, y + bannerHeight / 2);
     }
 
-    private drawVarioDot(ctx: CanvasRenderingContext2D, x: number, y: number, vario: number): void {
+    private drawVarioDot(ctx: CanvasRenderingContext2D, x: number, y: number, vario: number, radius: number): void {
         if (vario <= 0.2) {
             return;
         }
         ctx.fillStyle = "#e35b5b";
         ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
     }
 
-    private drawDebugOverlay(ctx: CanvasRenderingContext2D, metrics: DebugMetrics, topBarHeight: number): void {
+    private drawDebugOverlay(
+        ctx: CanvasRenderingContext2D,
+        metrics: DebugMetrics,
+        topBarHeight: number,
+        uiScale: number,
+    ): void {
         const lines = [
             `dt: ${metrics.dt.toFixed(3)} s`,
             `fps: ${metrics.fps.toFixed(0)}`,
@@ -324,13 +355,18 @@ export class Hud {
 
         ctx.save();
         ctx.fillStyle = "rgba(20, 20, 20, 0.75)";
-        ctx.fillRect(16, topBarHeight + 12, 252, 16 + lines.length * 16);
+        ctx.fillRect(
+            16 * uiScale,
+            topBarHeight + 12 * uiScale,
+            252 * uiScale,
+            16 * uiScale + lines.length * 16 * uiScale,
+        );
         ctx.fillStyle = "#f5f5f5";
-        ctx.font = `12px ${UI_FONT}`;
+        ctx.font = `${12 * uiScale}px ${UI_FONT}`;
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         lines.forEach((line, index) => {
-            ctx.fillText(line, 24, topBarHeight + 20 + index * 16);
+            ctx.fillText(line, 24 * uiScale, topBarHeight + 20 * uiScale + index * 16 * uiScale);
         });
         ctx.restore();
     }
@@ -342,15 +378,16 @@ export class Hud {
         windSpeedMps: number,
         windDirDeg: number,
         compact: boolean,
+        uiScale: number,
     ): void {
-        const arrowSize = compact ? 14 : 18;
-        const padding = compact ? 10 : 14;
+        const arrowSize = (compact ? 14 : 18) * uiScale;
+        const padding = (compact ? 10 : 14) * uiScale;
         const text = `Wind ${windSpeedMps.toFixed(1)} m/s ${Math.round(windDirDeg)} Grad`;
-        ctx.font = `${compact ? 11 : 12}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 11 : 12) * uiScale}px ${UI_FONT}`;
         ctx.fillStyle = "#5a554c";
         ctx.textAlign = "right";
         ctx.textBaseline = "middle";
-        const textX = width - padding - arrowSize - 6;
+        const textX = width - padding - arrowSize - 6 * uiScale;
         const centerY = barHeight / 2;
         ctx.fillText(text, textX, centerY);
 
@@ -362,13 +399,13 @@ export class Hud {
         const headY = centerY + Math.sin(angle) * (arrowSize * 0.6);
 
         ctx.strokeStyle = "#5a554c";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * uiScale;
         ctx.beginPath();
         ctx.moveTo(tailX, tailY);
         ctx.lineTo(headX, headY);
         ctx.stroke();
 
-        const headSize = 4;
+        const headSize = 4 * uiScale;
         const leftAngle = angle + Math.PI * 0.75;
         const rightAngle = angle - Math.PI * 0.75;
         ctx.beginPath();
@@ -386,8 +423,9 @@ export class Hud {
         panelHeight: number,
         info: { name: string; distanceM: number; bearingRad: number },
         compact: boolean,
+        uiScale: number,
     ): void {
-        const arrowSize = compact ? 32 : 40;
+        const arrowSize = (compact ? 32 : 40) * uiScale;
         const showText = true;
         const centerX = width / 2;
         const centerY = panelY + panelHeight / 2;
@@ -395,7 +433,7 @@ export class Hud {
 
         ctx.save();
         ctx.strokeStyle = "#2f5c8c";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * uiScale;
         ctx.beginPath();
         ctx.arc(centerX, centerY, arrowSize * 0.6, 0, Math.PI * 2);
         ctx.stroke();
@@ -409,7 +447,7 @@ export class Hud {
         ctx.lineTo(headX, headY);
         ctx.stroke();
 
-        const headSize = 4;
+        const headSize = 4 * uiScale;
         const leftAngle = angle + Math.PI * 0.75;
         const rightAngle = angle - Math.PI * 0.75;
         ctx.beginPath();
@@ -422,10 +460,10 @@ export class Hud {
         if (showText) {
             const text = `${info.name} ${Math.round(info.distanceM)} m`;
             ctx.fillStyle = "#2f5c8c";
-            ctx.font = `${compact ? 12 : 14}px ${UI_FONT}`;
+            ctx.font = `${(compact ? 12 : 14) * uiScale}px ${UI_FONT}`;
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
-            ctx.fillText(text, centerX, centerY + arrowSize * 0.6 + 4);
+            ctx.fillText(text, centerX, centerY + arrowSize * 0.6 + 4 * uiScale);
         }
 
         ctx.restore();
@@ -437,14 +475,15 @@ export class Hud {
         barHeight: number,
         progress: { completed: number; total: number },
         compact: boolean,
+        uiScale: number,
     ): void {
         const text = `TP ${progress.completed}/${progress.total}`;
         ctx.save();
         ctx.fillStyle = "#5a554c";
-        ctx.font = `${compact ? 12 : 13}px ${UI_FONT}`;
+        ctx.font = `${(compact ? 12 : 13) * uiScale}px ${UI_FONT}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
-        ctx.fillText(text, width / 2, barHeight - 6);
+        ctx.fillText(text, width / 2, barHeight - 6 * uiScale);
         ctx.restore();
     }
 

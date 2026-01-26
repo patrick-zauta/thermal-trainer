@@ -26,11 +26,26 @@ export class TouchControls {
         pauseButton: { x: 0, y: 0, width: 0, height: 0 },
     };
     private visible = false;
+    private uiScale = 1;
 
     public updateLayout(width: number, height: number): void {
-        const margin = 16;
-        const sliderWidth = clamp(width * 0.12, 56, 90);
-        const sliderHeight = clamp(height * 0.45, 180, 340);
+        const dpr = window.devicePixelRatio || 1;
+        const cssWidth = width / dpr;
+        const cssHeight = height / dpr;
+        const mobile = cssWidth < 900 || cssHeight < 600;
+        const scaleBoost = mobile ? 1.12 : 1;
+        this.uiScale = dpr * scaleBoost;
+
+        const marginCss = clamp(cssWidth * 0.03, 16, 28);
+        const speedbarHeightCss = clamp(cssHeight * 0.12, 56, 90);
+        const speedbarWidthCss = clamp(cssWidth * 0.42, 180, 280);
+        const availableSliderHeight = Math.max(200, cssHeight - speedbarHeightCss - marginCss * 2 - 24);
+        const sliderHeightCss = clamp(cssHeight * 0.7, 240, availableSliderHeight);
+        const sliderWidthCss = clamp(cssWidth * 0.18, 90, 150);
+
+        const margin = marginCss * this.uiScale;
+        const sliderHeight = sliderHeightCss * this.uiScale;
+        const sliderWidth = sliderWidthCss * this.uiScale;
         const sliderY = height - sliderHeight - margin;
 
         const leftSlider = {
@@ -46,8 +61,8 @@ export class TouchControls {
             height: sliderHeight,
         };
 
-        const speedbarWidth = clamp(width * 0.3, 120, 210);
-        const speedbarHeight = clamp(height * 0.1, 48, 72);
+        const speedbarWidth = speedbarWidthCss * this.uiScale;
+        const speedbarHeight = speedbarHeightCss * this.uiScale;
         const speedbarButton = {
             x: (width - speedbarWidth) / 2,
             y: height - speedbarHeight - margin,
@@ -55,7 +70,7 @@ export class TouchControls {
             height: speedbarHeight,
         };
 
-        const pauseSize = clamp(width * 0.09, 40, 54);
+        const pauseSize = clamp(cssWidth * 0.1, 48, 68) * this.uiScale;
         const pauseButton = {
             x: width - pauseSize - margin,
             y: margin,
@@ -96,7 +111,7 @@ export class TouchControls {
     }
 
     private drawSlider(ctx: CanvasRenderingContext2D, rect: Rect, target: number, label: string): void {
-        drawRoundedRect(ctx, rect, 16, "#2b2b2b", 0.15);
+        drawRoundedRect(ctx, rect, 18 * this.uiScale, "#2b2b2b", 0.15);
 
         const fillHeight = rect.height * clamp(target, 0, 1);
         const fillRect: Rect = {
@@ -105,7 +120,7 @@ export class TouchControls {
             width: rect.width,
             height: fillHeight,
         };
-        drawRoundedRect(ctx, fillRect, 12, "#2b2b2b", 0.35);
+        drawRoundedRect(ctx, fillRect, 12 * this.uiScale, "#2b2b2b", 0.35);
 
         const knobY = rect.y + rect.height - fillHeight;
         ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
@@ -114,25 +129,25 @@ export class TouchControls {
         ctx.fill();
 
         ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.font = `14px "Space Grotesk", "Trebuchet MS", sans-serif`;
+        ctx.font = `${Math.round(14 * this.uiScale)}px "Space Grotesk", "Trebuchet MS", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
-        ctx.fillText(label, rect.x + rect.width / 2, rect.y - 6);
+        ctx.fillText(label, rect.x + rect.width / 2, rect.y - 6 * this.uiScale);
     }
 
     private drawSpeedbar(ctx: CanvasRenderingContext2D, rect: Rect, active: boolean): void {
-        drawRoundedRect(ctx, rect, 18, "#2b2b2b", active ? 0.45 : 0.25);
+        drawRoundedRect(ctx, rect, 18 * this.uiScale, "#2b2b2b", active ? 0.45 : 0.25);
         ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.font = `16px "Space Grotesk", "Trebuchet MS", sans-serif`;
+        ctx.font = `${Math.round(16 * this.uiScale)}px "Space Grotesk", "Trebuchet MS", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("Speedbar", rect.x + rect.width / 2, rect.y + rect.height / 2);
     }
 
     private drawPause(ctx: CanvasRenderingContext2D, rect: Rect): void {
-        drawRoundedRect(ctx, rect, 12, "#2b2b2b", 0.25);
+        drawRoundedRect(ctx, rect, 12 * this.uiScale, "#2b2b2b", 0.25);
         ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.font = `12px "Space Grotesk", "Trebuchet MS", sans-serif`;
+        ctx.font = `${Math.round(12 * this.uiScale)}px "Space Grotesk", "Trebuchet MS", sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("Pause", rect.x + rect.width / 2, rect.y + rect.height / 2);
