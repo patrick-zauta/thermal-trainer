@@ -261,10 +261,9 @@ export const createModeScreen = (initial: RunConfig, callbacks: ModeScreenCallba
             visibilitySelect.value = selectedStage.defaultThermikVisibility;
         }
         if (!dirty.mapId) {
-            const desired = mapOptions.some((option) => option.value === selectedStage.mapId)
+            mapSelect.value = mapOptions.some((option) => option.value === selectedStage.mapId)
                 ? selectedStage.mapId
                 : mapOptions[0].value;
-            mapSelect.value = desired;
         }
         if (!dirty.windEnabled) {
             windToggleRow.toggle.checked = selectedStage.defaultWind.windEnabled;

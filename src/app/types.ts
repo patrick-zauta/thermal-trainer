@@ -71,6 +71,13 @@ export type TrackSample = {
     altitudeM: number;
 };
 
+export type TurnpointEvent = {
+    name: string;
+    timeSec: number;
+    altitudeM: number;
+    minAltitudeM: number;
+};
+
 export type RunSummary = {
     mode: FlightMode;
     mapId: MapId;
@@ -86,5 +93,6 @@ export type RunSummary = {
     stallCount: number;
     targetReached: boolean;
     samples: TrackSample[];
+    turnpointEvents: TurnpointEvent[];
     wind: WindConfig;
 };

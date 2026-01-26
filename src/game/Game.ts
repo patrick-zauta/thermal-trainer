@@ -227,6 +227,7 @@ export class Game {
             stallCount: this.stats.stallCount,
             targetReached: this.stats.targetReached,
             samples: this.stats.samples,
+            turnpointEvents: this.stats.turnpointEvents,
             wind: { ...this.activeWindSettings },
         };
     }
@@ -505,6 +506,12 @@ export class Game {
         const dy = this.physics.state.y - next.center.y;
         if (Math.hypot(dx, dy) <= next.radius && this.physics.state.altitudeM >= next.minAltitudeM) {
             this.turnpointsReached[this.turnpointIndex] = true;
+            this.stats.turnpointEvents.push({
+                name: next.name,
+                timeSec: this.stats.durationSec,
+                altitudeM: this.physics.state.altitudeM,
+                minAltitudeM: next.minAltitudeM,
+            });
             this.turnpointIndex += 1;
         }
     }
@@ -645,6 +652,7 @@ const createStats = () => ({
     stallCount: 0,
     targetReached: false,
     samples: [] as RunSummary["samples"],
+    turnpointEvents: [] as RunSummary["turnpointEvents"],
 });
 
 const wrapSignedAngle = (value: number): number => {
