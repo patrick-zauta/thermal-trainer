@@ -1,5 +1,5 @@
 import { Map } from "./Map";
-import type { WindSettings } from "../app/types";
+import type { WindConfig } from "../app/types";
 
 export type FlightState = {
     x: number;
@@ -144,7 +144,7 @@ export class Physics {
         targets: { leftTarget: number; rightTarget: number; speedbarTarget: number },
         map: Map,
         time: number,
-        wind: WindSettings,
+        wind: WindConfig,
         aglM: number,
     ): Telemetry {
         this.state.leftBrake = moveTowards(this.state.leftBrake, targets.leftTarget, BRAKE_RAMP_RATE * dt);
@@ -324,7 +324,7 @@ const toHeadingDeg = (headingRad: number): number => {
     return Math.round((deg + 360) % 360);
 };
 
-const getWindVector = (wind: WindSettings): { x: number; y: number } => {
+const getWindVector = (wind: WindConfig): { x: number; y: number } => {
     if (!wind.windEnabled || wind.windSpeedMps <= 0) {
         return { x: 0, y: 0 };
     }

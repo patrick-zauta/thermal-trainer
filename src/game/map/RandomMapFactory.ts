@@ -1,6 +1,6 @@
-import type { MapDefinition, Thermal, Turnpoint } from "../../data/mvpMap";
+import type { MapDefinition, Thermal, Turnpoint, SinkZone } from "../../data/mvpMap";
 import { worldHeight, worldWidth } from "../../data/mvpMap";
-import type { RandomMapSettings } from "../../app/types";
+import type { IndividualConfig } from "../../app/types";
 
 const BASE_RINGS = [
     { radius: 40, verticalAir: 3.0 },
@@ -8,10 +8,10 @@ const BASE_RINGS = [
     { radius: 150, verticalAir: 1.0 },
 ];
 
-export const createRandomMap = (settings: RandomMapSettings): MapDefinition => {
-    const thermalCount = clamp(Math.round(settings.thermalCount), 1, 4);
+export const createIndividualMap = (settings: IndividualConfig): MapDefinition => {
+    const thermalCount = clamp(Math.round(settings.thermalCount), 1, 3);
     const turnpointCount = clamp(Math.round(settings.turnpointCount), 1, 2);
-    const strength = clamp(settings.strength, 0.7, 1.4);
+    const strength = dynamicsStrength(settings.thermalDynamics);
     const targetRadius = clamp(settings.targetRadius, 35, 80);
 
     const centers: Array<{ x: number; y: number }> = [];
@@ -33,6 +33,18 @@ export const createRandomMap = (settings: RandomMapSettings): MapDefinition => {
         });
     }
 
+    const sinkZones: SinkZone[] = [];
+    if (settings.sinkEnabled) {
+        const center = placePoint(centers, margin, minDistance);
+        centers.push(center);
+        sinkZones.push({
+            name: "Sink",
+            center,
+            radius: 140,
+            verticalAir: -2.0,
+        });
+    }
+
     const turnpoints: Turnpoint[] = [];
     for (let i = 0; i < turnpointCount; i += 1) {
         const center = placePoint(centers, margin, minDistance);
@@ -49,9 +61,9 @@ export const createRandomMap = (settings: RandomMapSettings): MapDefinition => {
 
     return {
         id: "random",
-        name: "Zufall",
+        name: "Individuell",
         thermals,
-        sinkZones: [],
+        sinkZones,
         turnpoints,
         target: { center: targetCenter, radius: targetRadius },
     };
@@ -85,5 +97,15 @@ const distance = (a: { x: number; y: number }, b: { x: number; y: number }): num
 };
 
 const randomBetween = (min: number, max: number): number => min + Math.random() * (max - min);
+
+const dynamicsStrength = (mode: IndividualConfig["thermalDynamics"]): number => {
+    if (mode === "low") {
+        return 0.85;
+    }
+    if (mode === "high") {
+        return 1.15;
+    }
+    return 1.0;
+};
 
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);

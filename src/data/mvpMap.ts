@@ -33,7 +33,7 @@ export type TargetZone = {
     radius: number;
 };
 
-export type MapId = "basis" | "ridge" | "valley" | "lake" | "random";
+export type MapId = "basis" | "ridge" | "valley" | "lake" | "swisstopo" | "random";
 
 export type MapDefinition = {
     id: MapId;
@@ -195,6 +195,43 @@ export const mapDefinitions: MapDefinition[] = [
             { name: "TP2", center: { x: 1080, y: 620 }, radius: 28, minAltitudeM: 720 },
         ],
         target: { center: { x: 980, y: 200 }, radius: 50 },
+    },
+    {
+        id: "swisstopo",
+        name: "Swisstopo Demo",
+        thermals: [
+            {
+                name: "Thermik A",
+                center: { x: 400, y: 220 },
+                rings: [
+                    { radius: 40, verticalAir: 3.0 },
+                    { radius: 90, verticalAir: 2.0 },
+                    { radius: 150, verticalAir: 1.0 },
+                ],
+            },
+            {
+                name: "Thermik B",
+                center: { x: 900, y: 200 },
+                rings: [
+                    { radius: 60, verticalAir: 3.0 },
+                    { radius: 140, verticalAir: 2.0 },
+                    { radius: 240, verticalAir: 1.0 },
+                ],
+            },
+        ],
+        sinkZones: [
+            {
+                name: "Sink",
+                center: { x: 650, y: 520 },
+                radius: 140,
+                verticalAir: -2.0,
+            },
+        ],
+        turnpoints: [
+            { name: "TP1", center: { x: 240, y: 140 }, radius: 28, minAltitudeM: 560 },
+            { name: "TP2", center: { x: 860, y: 560 }, radius: 28, minAltitudeM: 640 },
+        ],
+        target: { center: { x: 1050, y: 600 }, radius: 50 },
     },
 ];
 

@@ -1,6 +1,6 @@
 import type { MapDefinition, MapId, Point, SinkZone, TargetZone, Thermal, Turnpoint } from "../data/mvpMap";
 import { worldHeight, worldWidth } from "../data/mvpMap";
-import type { ThermalVisibility, WindSettings } from "../app/types";
+import type { ThermikVisibility, WindConfig } from "../app/types";
 
 export type WorldTransform = {
     a: number;
@@ -31,7 +31,7 @@ const DRIFT_HEIGHT_M = 1000;
 const DRIFT_TIME_EQUIV_SEC = 25;
 
 export type MapRenderOptions = {
-    visibility: ThermalVisibility;
+    visibility: ThermikVisibility;
     showLabels: boolean;
     showTurnpoints: boolean;
     drawBackground: boolean;
@@ -46,14 +46,13 @@ export class Map {
     private readonly turnpoints: Turnpoint[];
     private readonly target: TargetZone;
     private readonly id: MapId;
-    private windSettings: WindSettings = {
+    private windSettings: WindConfig = {
         windEnabled: false,
         windSpeedMps: 0,
         windDirDeg: 0,
         windIndicatorEnabled: true,
         thermalDriftEnabled: false,
         thermalDriftFactor: 0.6,
-        windRandomEnabled: false,
     };
 
     public constructor(definition: MapDefinition) {
@@ -86,7 +85,7 @@ export class Map {
         return this.turnpoints;
     }
 
-    public setWindSettings(settings: WindSettings): void {
+    public setWindSettings(settings: WindConfig): void {
         this.windSettings = { ...settings };
     }
 

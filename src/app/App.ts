@@ -1,6 +1,7 @@
 import { defaultSettings } from "./defaults";
-import { loadSettings, saveSettings } from "./storage";
-import type { ModeSelection, RunSummary, Settings } from "./types";
+import { loadLastRunSetup, loadSettings, saveLastRunSetup, saveSettings } from "./storage";
+import type { RunConfig, RunSummary, Settings } from "./types";
+import { FlightMode } from "./types";
 import { createHomeScreen } from "./screens/HomeScreen";
 import { createModeScreen } from "./screens/ModeScreen";
 import { createSettingsScreen } from "./screens/SettingsScreen";
@@ -10,25 +11,14 @@ import { createEndOverlay } from "./screens/EndOverlay";
 import type { Screen } from "./screens/types";
 import { Game } from "../game/Game";
 import { Map } from "../game/Map";
-import { getMapDefinition, mapDefinitions } from "../data/mvpMap";
+import { getMapDefinition } from "../data/mvpMap";
 import { createAttributionOverlay } from "../game/ui/AttributionOverlay";
-import { createRandomMap } from "../game/map/RandomMapFactory";
+import { createIndividualMap } from "../game/map/RandomMapFactory";
 
 export class App {
     private readonly root: HTMLElement;
     private settings: Settings;
-    private modeSelection: ModeSelection = {
-        mode: "training",
-        thermalVisibility: "visible",
-        mapId: mapDefinitions[0].id,
-        trainingStage: 1,
-        randomSettings: {
-            thermalCount: 2,
-            turnpointCount: 1,
-            strength: 1,
-            targetRadius: 50,
-        },
-    };
+    private lastRunSetup: RunConfig;
     private currentScreen: Screen | null = null;
     private game: Game | null = null;
     private pauseOverlay: ReturnType<typeof createPauseOverlay> | null = null;
@@ -36,6 +26,7 @@ export class App {
     public constructor(root: HTMLElement) {
         this.root = root;
         this.settings = loadSettings();
+        this.lastRunSetup = loadLastRunSetup();
     }
 
     public start(): void {
@@ -67,9 +58,10 @@ export class App {
     private showMode(): void {
         this.stopGame();
         this.setScreen(
-            createModeScreen(this.modeSelection, {
+            createModeScreen(this.lastRunSetup, {
                 onStart: (selection) => {
-                    this.modeSelection = selection;
+                    this.lastRunSetup = selection;
+                    saveLastRunSetup(selection);
                     this.startGame(selection);
                 },
                 onBack: () => this.showHome(),
@@ -93,13 +85,13 @@ export class App {
         const map = new Map(summary.mapDefinition);
         this.setScreen(
             createSummaryScreen(summary, map, {
-                onRepeat: () => this.startGame(this.modeSelection),
+                onRepeat: () => this.startGame(this.lastRunSetup),
                 onHome: () => this.showHome(),
             }),
         );
     }
 
-    private startGame(selection: ModeSelection): void {
+    private startGame(runConfig: RunConfig): void {
         this.stopGame();
         const container = document.createElement("div");
         container.className = "screen screen-game";
@@ -136,31 +128,19 @@ export class App {
         this.setScreen({ element: container });
 
         const mapDefinition =
-            selection.mode === "random" ? createRandomMap(selection.randomSettings) : getMapDefinition(selection.mapId);
+            runConfig.mode === FlightMode.Individual && runConfig.individualConfig
+                ? createIndividualMap(runConfig.individualConfig)
+                : getMapDefinition(runConfig.mapId);
+        const backgroundSettings = resolveBackground(runConfig.mapId);
 
         const game = new Game(canvas, {
-            mode: selection.mode,
-            thermalVisibility: selection.thermalVisibility,
+            runConfig,
             keybindings: this.settings.keybindings,
             audioEnabled: this.settings.audioEnabled,
             masterVolume: this.settings.masterVolume,
             touchControls: this.settings.touchControls,
-            wind: {
-                windEnabled: this.settings.windEnabled,
-                windSpeedMps: this.settings.windSpeedMps,
-                windDirDeg: this.settings.windDirDeg,
-                windIndicatorEnabled: this.settings.windIndicatorEnabled,
-                thermalDriftEnabled: this.settings.thermalDriftEnabled,
-                thermalDriftFactor: this.settings.thermalDriftFactor,
-                windRandomEnabled: this.settings.windRandomEnabled,
-            },
-            background: {
-                wmtsEnabled: this.settings.wmtsEnabled,
-                wmtsLayer: this.settings.wmtsLayer,
-                wmtsOpacity: this.settings.wmtsOpacity,
-            },
+            background: backgroundSettings,
             mapDefinition,
-            trainingStage: selection.trainingStage,
         });
 
         this.game = game;
@@ -205,20 +185,6 @@ export class App {
             this.game.setAudioEnabled(this.settings.audioEnabled);
             this.game.setMasterVolume(this.settings.masterVolume);
             this.game.setTouchControlsMode(this.settings.touchControls);
-            this.game.setWindSettings({
-                windEnabled: this.settings.windEnabled,
-                windSpeedMps: this.settings.windSpeedMps,
-                windDirDeg: this.settings.windDirDeg,
-                windIndicatorEnabled: this.settings.windIndicatorEnabled,
-                thermalDriftEnabled: this.settings.thermalDriftEnabled,
-                thermalDriftFactor: this.settings.thermalDriftFactor,
-                windRandomEnabled: this.settings.windRandomEnabled,
-            });
-            this.game.setBackgroundSettings({
-                wmtsEnabled: this.settings.wmtsEnabled,
-                wmtsLayer: this.settings.wmtsLayer,
-                wmtsOpacity: this.settings.wmtsOpacity,
-            });
         }
         if (this.pauseOverlay) {
             this.pauseOverlay.setAudioState(this.settings);
@@ -233,3 +199,18 @@ export class App {
         void element.requestFullscreen();
     }
 }
+
+const resolveBackground = (mapId: RunConfig["mapId"]): { wmtsEnabled: boolean; wmtsLayer: string; wmtsOpacity: number } => {
+    if (mapId === "swisstopo") {
+        return {
+            wmtsEnabled: true,
+            wmtsLayer: "ch.swisstopo.pixelkarte-grau",
+            wmtsOpacity: 0.65,
+        };
+    }
+    return {
+        wmtsEnabled: false,
+        wmtsLayer: "ch.swisstopo.pixelkarte-grau",
+        wmtsOpacity: 0.65,
+    };
+};

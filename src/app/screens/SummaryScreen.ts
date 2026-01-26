@@ -1,4 +1,5 @@
 import type { RunSummary } from "../types";
+import { FlightMode, ThermikVisibility } from "../types";
 import type { Map, WorldTransform } from "../../game/Map";
 import type { Screen } from "./types";
 
@@ -33,7 +34,6 @@ export const createSummaryScreen = (summary: RunSummary, map: Map, callbacks: Su
                       "Wind",
                       `${summary.wind.windSpeedMps.toFixed(1)} m/s ${Math.round(summary.wind.windDirDeg)} Grad`,
                   ),
-                  statRow("Zufallswind", summary.wind.windRandomEnabled ? "ja" : "nein"),
                   statRow(
                       "Thermik Drift",
                       summary.wind.thermalDriftEnabled
@@ -42,7 +42,7 @@ export const createSummaryScreen = (summary: RunSummary, map: Map, callbacks: Su
                   ),
               ]
             : []),
-        ...(summary.mode === "training" || summary.mode === "random"
+        ...(summary.mode !== FlightMode.FreeFlight
             ? [statRow("Ziel erreicht", summary.targetReached ? "ja" : "nein")]
             : []),
     );
@@ -108,7 +108,7 @@ const drawSummary = (canvas: HTMLCanvasElement, map: Map, summary: RunSummary): 
     const transform = createFitTransform(canvas.width, canvas.height, map.worldWidth, map.worldHeight);
     map.setWindSettings(summary.wind);
     map.render(ctx, transform, summary.durationSec, {
-        visibility: "visible",
+        visibility: ThermikVisibility.Visible,
         showLabels: false,
         showTurnpoints: true,
         drawBackground: true,
