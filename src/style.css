@@ -206,6 +206,24 @@ select {
     font-size: 14px;
 }
 
+.challenge-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
+    gap: 18px;
+}
+
+.challenge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.challenge-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
 .option-label {
     margin: 0;
     font-weight: 600;
@@ -471,5 +489,9 @@ select {
 
     .button-row {
         flex-direction: column;
+    }
+
+    .challenge-layout {
+        grid-template-columns: 1fr;
     }
 }

@@ -1,9 +1,17 @@
 import { defaultSettings } from "./defaults";
-import { loadLastRunSetup, loadSettings, saveLastRunSetup, saveSettings } from "./storage";
+import {
+    loadLastChallengeSetup,
+    loadLastRunSetup,
+    loadSettings,
+    saveLastChallengeSetup,
+    saveLastRunSetup,
+    saveSettings,
+} from "./storage";
 import type { RunConfig, RunSummary, Settings } from "./types";
 import { FlightMode } from "./types";
 import { createHomeScreen } from "./screens/HomeScreen";
 import { createModeScreen } from "./screens/ModeScreen";
+import { createChallengesScreen } from "./screens/ChallengesScreen";
 import { createSettingsScreen } from "./screens/SettingsScreen";
 import { createSummaryScreen } from "./screens/SummaryScreen";
 import { createPauseOverlay } from "./screens/PauseOverlay";
@@ -14,11 +22,13 @@ import { Map } from "../game/Map";
 import { getMapDefinition } from "../data/mvpMap";
 import { createAttributionOverlay } from "../game/ui/AttributionOverlay";
 import { createIndividualMap } from "../game/map/RandomMapFactory";
+import { getScenarioById } from "../game/challenge/scenarios";
 
 export class App {
     private readonly root: HTMLElement;
     private settings: Settings;
     private lastRunSetup: RunConfig;
+    private lastChallengeSetup = loadLastChallengeSetup();
     private currentScreen: Screen | null = null;
     private game: Game | null = null;
     private pauseOverlay: ReturnType<typeof createPauseOverlay> | null = null;
@@ -46,6 +56,7 @@ export class App {
         this.setScreen(
             createHomeScreen(this.settings, {
                 onStart: () => this.showMode(),
+                onChallenges: () => this.showChallenges(),
                 onSettings: () => this.showSettings(),
                 onToggleAudio: (enabled) => {
                     const next = { ...this.settings, audioEnabled: enabled };
@@ -69,6 +80,24 @@ export class App {
         );
     }
 
+    private showChallenges(): void {
+        this.stopGame();
+        this.setScreen(
+            createChallengesScreen(this.lastChallengeSetup, {
+                onStart: (runConfig) => {
+                    this.lastChallengeSetup = { scenarioId: runConfig.scenarioId ?? "", wind: runConfig.wind };
+                    saveLastChallengeSetup(this.lastChallengeSetup);
+                    this.startGame(runConfig);
+                },
+                onBack: () => this.showHome(),
+                onUpdate: (setup) => {
+                    this.lastChallengeSetup = setup;
+                    saveLastChallengeSetup(setup);
+                },
+            }),
+        );
+    }
+
     private showSettings(): void {
         this.stopGame();
         this.setScreen(
@@ -82,7 +111,8 @@ export class App {
 
     private showSummary(summary: RunSummary): void {
         this.stopGame();
-        const map = new Map(summary.mapDefinition);
+        const scenario = summary.scenarioId ? getScenarioById(summary.scenarioId) : null;
+        const map = new Map(summary.mapDefinition, scenario ? scenario.thermalField : undefined);
         this.setScreen(
             createSummaryScreen(summary, map, {
                 onRepeat: () => this.startGame(this.lastRunSetup),
@@ -93,6 +123,7 @@ export class App {
 
     private startGame(runConfig: RunConfig): void {
         this.stopGame();
+        this.lastRunSetup = runConfig;
         const container = document.createElement("div");
         container.className = "screen screen-game";
 
@@ -127,11 +158,15 @@ export class App {
 
         this.setScreen({ element: container });
 
+        const scenario = runConfig.scenarioId ? getScenarioById(runConfig.scenarioId) : null;
         const mapDefinition =
-            runConfig.mode === FlightMode.Individual && runConfig.individualConfig
+            scenario?.mapDefinition ??
+            (runConfig.mode === FlightMode.Individual && runConfig.individualConfig
                 ? createIndividualMap(runConfig.individualConfig)
-                : getMapDefinition(runConfig.mapId);
-        const backgroundSettings = resolveBackground(runConfig.mapId);
+                : getMapDefinition(runConfig.mapId));
+        const backgroundSettings = scenario
+            ? { wmtsEnabled: true, wmtsLayer: "ch.swisstopo.pixelkarte-grau", wmtsOpacity: 0.65 }
+            : resolveBackground(runConfig.mapId);
 
         const game = new Game(canvas, {
             runConfig,

@@ -9,6 +9,7 @@ npm run dev
 ## Screens
 - Home mit kurzer Einfuehrung und Start
 - Modus Auswahl fuer Training, Free Flight oder Individuell
+- Challenge Modus mit Szenarien
 - Einstellungen fuer Audio, Vollbild und Tastenbelegung
 - Spiel mit Pause Menue und Zusammenfassung nach Exit
 
@@ -33,6 +34,7 @@ npm run dev
 - Swisstopo Hintergrundkarte und AGL Anzeige sind integriert.
 - Dieses Kartenfeature wurde fuer Patrick Zauta implementiert.
 - Individuell Modus erlaubt eigene Thermik, Sink und Turnpoint Parameter.
+- Thermik Modell nutzt weiche Gaussfelder mit Heatmap Overlay.
 
 ## Karte und Datenquellen
 - MapConfig befindet sich in `src/game/map/maps/ch_demo.ts` und kann fuer andere Gebiete angepasst werden.

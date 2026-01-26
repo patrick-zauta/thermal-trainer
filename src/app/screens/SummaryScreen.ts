@@ -55,9 +55,10 @@ export const createSummaryScreen = (summary: RunSummary, map: GameMap, callbacks
           ])
         : null;
 
+    const targetLabel = summary.scenarioId ? "Task abgeschlossen" : "Ziel erreicht";
     const targetSection =
-        summary.mode !== FlightMode.FreeFlight
-            ? createStatsSection("Ziel", [statRow("Ziel erreicht", summary.targetReached ? "ja" : "nein")])
+        summary.mode !== FlightMode.FreeFlight || summary.scenarioId
+            ? createStatsSection("Ziel", [statRow(targetLabel, summary.targetReached ? "ja" : "nein")])
             : null;
 
     const mapHeader = document.createElement("div");
@@ -240,6 +241,7 @@ const drawSummary = (
     };
 
     map.setWindSettings(summary.wind);
+    map.update(0.12, summary.durationSec, summary.wind);
     map.render(ctx, transform, summary.durationSec, {
         visibility: showThermals ? ThermikVisibility.Visible : ThermikVisibility.Hidden,
         showLabels: false,
