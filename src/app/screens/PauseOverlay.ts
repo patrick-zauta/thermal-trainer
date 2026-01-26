@@ -38,6 +38,11 @@ export const createPauseOverlay = (settings: Settings, callbacks: PauseCallbacks
     panel.append(title, buttonGroup);
     overlay.append(panel);
 
+    const attribution = document.createElement("div");
+    attribution.className = "attribution attribution-pause";
+    attribution.textContent = "© swisstopo";
+    overlay.append(attribution);
+
     return {
         element: overlay,
         setVisible: (visible: boolean) => {

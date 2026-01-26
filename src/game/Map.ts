@@ -27,11 +27,15 @@ const THERMAL_COLORS = ["#e35b5b", "#f4a340", "#f5d86b"];
 const SINK_COLOR = "#6aa5ff";
 const BACKGROUND_COLOR = "#ffffff";
 const THERMAL_FADE_OUT = 40;
+const DRIFT_HEIGHT_M = 1000;
+const DRIFT_TIME_EQUIV_SEC = 25;
 
 export type MapRenderOptions = {
     visibility: ThermalVisibility;
     showLabels: boolean;
     showTurnpoints: boolean;
+    drawBackground: boolean;
+    completedTurnpoints: boolean[];
 };
 
 export class Map {
@@ -49,6 +53,7 @@ export class Map {
         windIndicatorEnabled: true,
         thermalDriftEnabled: false,
         thermalDriftFactor: 0.6,
+        windRandomEnabled: false,
     };
 
     public constructor(definition: MapDefinition) {
@@ -85,8 +90,8 @@ export class Map {
         this.windSettings = { ...settings };
     }
 
-    public getVerticalAir(x: number, y: number, time: number): number {
-        const drift = this.getDriftOffset(time);
+    public getVerticalAir(x: number, y: number, time: number, aglM: number): number {
+        const drift = this.getDriftOffset(aglM);
         for (const zone of this.sinkZones) {
             const center = this.applyDrift(zone.center, drift);
             const dist = this.distance(x, y, center);
@@ -110,23 +115,29 @@ export class Map {
     public render(
         ctx: CanvasRenderingContext2D,
         transform: WorldTransform,
-        time: number,
+        _time: number,
         options: MapRenderOptions,
     ): void {
         ctx.save();
         ctx.setTransform(transform.a, transform.b, transform.c, transform.d, transform.offsetX, transform.offsetY);
 
-        ctx.fillStyle = BACKGROUND_COLOR;
-        ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
+        if (options.drawBackground) {
+            ctx.fillStyle = BACKGROUND_COLOR;
+            ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
+        }
 
         if (options.visibility !== "hidden") {
-            const drift = this.getDriftOffset(time);
+            const drift = this.getDriftOffset(0);
             for (const zone of this.sinkZones) {
                 const center = this.applyDrift(zone.center, drift);
+                const sinkAlpha = options.drawBackground ? 1 : 0.45;
+                ctx.save();
+                ctx.globalAlpha *= sinkAlpha;
                 ctx.fillStyle = SINK_COLOR;
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, zone.radius, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.restore();
 
                 if (options.showLabels) {
                     ctx.fillStyle = "#1a3f85";
@@ -140,6 +151,9 @@ export class Map {
             for (const thermal of this.thermals) {
                 const center = this.applyDrift(thermal.center, drift);
                 const rings = [...thermal.rings].sort((a, b) => b.radius - a.radius);
+                const thermalAlpha = options.drawBackground ? 1 : 0.45;
+                ctx.save();
+                ctx.globalAlpha *= thermalAlpha;
                 rings.forEach((ring, index) => {
                     const colorIndex = rings.length - 1 - index;
                     ctx.fillStyle = THERMAL_COLORS[colorIndex] ?? THERMAL_COLORS[2];
@@ -147,6 +161,7 @@ export class Map {
                     ctx.arc(center.x, center.y, ring.radius, 0, Math.PI * 2);
                     ctx.fill();
                 });
+                ctx.restore();
 
                 if (options.showLabels) {
                     const labelOffset = 18;
@@ -167,7 +182,7 @@ export class Map {
         }
 
         if (options.showTurnpoints) {
-            this.drawTurnpoints(ctx, options.showLabels);
+            this.drawTurnpoints(ctx, options.showLabels, options.completedTurnpoints);
         }
 
         ctx.restore();
@@ -213,17 +228,18 @@ export class Map {
         return value;
     }
 
-    private drawTurnpoints(ctx: CanvasRenderingContext2D, showLabels: boolean): void {
-        for (const point of this.turnpoints) {
-            ctx.fillStyle = "rgba(80, 140, 190, 0.2)";
-            ctx.strokeStyle = "#2f5c8c";
+    private drawTurnpoints(ctx: CanvasRenderingContext2D, showLabels: boolean, completed: boolean[]): void {
+        for (const [index, point] of this.turnpoints.entries()) {
+            const isDone = completed[index] ?? false;
+            ctx.fillStyle = isDone ? "rgba(70, 160, 90, 0.25)" : "rgba(80, 140, 190, 0.2)";
+            ctx.strokeStyle = isDone ? "#2f7a4d" : "#2f5c8c";
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.arc(point.center.x, point.center.y, point.radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            ctx.fillStyle = "#2f5c8c";
+            ctx.fillStyle = isDone ? "#2f7a4d" : "#2f5c8c";
             ctx.font = "12px 'Space Grotesk', 'Trebuchet MS', sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
@@ -238,15 +254,19 @@ export class Map {
         }
     }
 
-    private getDriftOffset(time: number): Point {
-        if (!this.windSettings.windEnabled || !this.windSettings.thermalDriftEnabled || time <= 0) {
+    private getDriftOffset(aglM: number): Point {
+        if (!this.windSettings.windEnabled || !this.windSettings.thermalDriftEnabled) {
             return { x: 0, y: 0 };
         }
+        if (aglM <= 0) {
+            return { x: 0, y: 0 };
+        }
+        const heightFactor = clamp(aglM / DRIFT_HEIGHT_M, 0, 1);
         const dirRad = (this.windSettings.windDirDeg * Math.PI) / 180;
         const driftSpeed = this.windSettings.windSpeedMps * this.windSettings.thermalDriftFactor;
         return {
-            x: Math.cos(dirRad) * driftSpeed * time,
-            y: Math.sin(dirRad) * driftSpeed * time,
+            x: Math.cos(dirRad) * driftSpeed * DRIFT_TIME_EQUIV_SEC * heightFactor,
+            y: Math.sin(dirRad) * driftSpeed * DRIFT_TIME_EQUIV_SEC * heightFactor,
         };
     }
 

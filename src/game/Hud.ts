@@ -27,6 +27,7 @@ type DebugMetrics = {
 
 type HudState = {
     altitudeM: number;
+    aglM: number | null;
     telemetry: Telemetry;
     leftBrake: number;
     rightBrake: number;
@@ -59,7 +60,7 @@ export class Hud {
         const compact = cssWidth < 720 || cssHeight < 520;
         const mobile = state.touchControlsVisible || cssWidth < 900 || cssHeight < 600;
         const uiScale = mobile ? dpr * 1.15 : 1;
-        const topBarHeight = (compact ? 46 : 56) * uiScale;
+        const topBarHeight = (compact ? 52 : 64) * uiScale;
         const bottomPanelHeight = (compact ? 60 : 72) * uiScale;
         const sidePanelWidth = (compact ? 104 : 120) * uiScale;
         const showSidePanels = !state.touchControlsVisible && !compact && cssWidth >= 860;
@@ -126,11 +127,13 @@ export class Hud {
         const groupWidth = width / 3;
         const labelFont = `${(compact ? 11 : 12) * uiScale}px ${UI_FONT}`;
         const valueFont = `${(compact ? 16 : 18) * uiScale}px ${UI_FONT}`;
+        const smallFont = `${(compact ? 10 : 11) * uiScale}px ${UI_FONT}`;
 
         ctx.fillStyle = "#4a433b";
         ctx.textBaseline = "top";
 
         const textOffset = (compact ? 6 : 8) * uiScale;
+        const lineGap = 16 * uiScale;
         this.drawGroup(
             ctx,
             16 * uiScale,
@@ -140,8 +143,15 @@ export class Hud {
             `${Math.round(state.altitudeM)} m`,
             labelFont,
             valueFont,
-            16 * uiScale,
+            lineGap,
         );
+
+        const aglText = state.aglM === null ? "AGL n a" : `AGL ${Math.round(state.aglM)} m`;
+        ctx.font = smallFont;
+        ctx.fillStyle = "#7a7267";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(aglText, 16 * uiScale, textOffset + lineGap + 14 * uiScale);
 
         const headingText = `${state.telemetry.headingDeg} Grad`;
         this.drawGroup(
@@ -153,7 +163,7 @@ export class Hud {
             headingText,
             labelFont,
             valueFont,
-            16 * uiScale,
+            lineGap,
         );
 
         const speedbarStatus = this.speedbarStatus(state.telemetry.speedbarAmount, state.speedbarTarget);
@@ -167,8 +177,21 @@ export class Hud {
             speedText,
             labelFont,
             valueFont,
-            16 * uiScale,
+            lineGap,
         );
+
+        const glideRatio = computeGlideRatio(state.telemetry.airspeedKmh, state.telemetry.sinkGlider);
+        if (glideRatio !== null) {
+            ctx.font = smallFont;
+            ctx.fillStyle = "#7a7267";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText(
+                `Gleiten ${glideRatio.toFixed(1)}:1`,
+                groupWidth * 2 + 16 * uiScale,
+                textOffset + lineGap + 14 * uiScale,
+            );
+        }
 
         if (state.turnpointProgress.total > 0) {
             this.drawTurnpointProgress(ctx, width, barHeight, state.turnpointProgress, compact, uiScale);
@@ -516,4 +539,12 @@ const formatSigned = (value: number): string => {
 
 const radToDeg = (value: number): number => {
     return (value * 180) / Math.PI;
+};
+
+const computeGlideRatio = (airspeedKmh: number, sinkGlider: number): number | null => {
+    if (sinkGlider <= 0.05) {
+        return null;
+    }
+    const airspeedMps = airspeedKmh / 3.6;
+    return airspeedMps / sinkGlider;
 };

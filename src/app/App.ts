@@ -11,6 +11,8 @@ import type { Screen } from "./screens/types";
 import { Game } from "../game/Game";
 import { Map } from "../game/Map";
 import { getMapDefinition, mapDefinitions } from "../data/mvpMap";
+import { createAttributionOverlay } from "../game/ui/AttributionOverlay";
+import { createRandomMap } from "../game/map/RandomMapFactory";
 
 export class App {
     private readonly root: HTMLElement;
@@ -19,6 +21,13 @@ export class App {
         mode: "training",
         thermalVisibility: "visible",
         mapId: mapDefinitions[0].id,
+        trainingStage: 1,
+        randomSettings: {
+            thermalCount: 2,
+            turnpointCount: 1,
+            strength: 1,
+            targetRadius: 50,
+        },
     };
     private currentScreen: Screen | null = null;
     private game: Game | null = null;
@@ -44,9 +53,13 @@ export class App {
     private showHome(): void {
         this.stopGame();
         this.setScreen(
-            createHomeScreen({
+            createHomeScreen(this.settings, {
                 onStart: () => this.showMode(),
                 onSettings: () => this.showSettings(),
+                onToggleAudio: (enabled) => {
+                    const next = { ...this.settings, audioEnabled: enabled };
+                    this.updateSettings(next);
+                },
             }),
         );
     }
@@ -77,7 +90,7 @@ export class App {
 
     private showSummary(summary: RunSummary): void {
         this.stopGame();
-        const map = new Map(getMapDefinition(summary.mapId));
+        const map = new Map(summary.mapDefinition);
         this.setScreen(
             createSummaryScreen(summary, map, {
                 onRepeat: () => this.startGame(this.modeSelection),
@@ -116,9 +129,14 @@ export class App {
             onContinue: () => this.exitRun(),
         });
 
-        container.append(canvas, pauseOverlay.element, endOverlay.element);
+        const attribution = createAttributionOverlay("© swisstopo");
+
+        container.append(canvas, pauseOverlay.element, endOverlay.element, attribution);
 
         this.setScreen({ element: container });
+
+        const mapDefinition =
+            selection.mode === "random" ? createRandomMap(selection.randomSettings) : getMapDefinition(selection.mapId);
 
         const game = new Game(canvas, {
             mode: selection.mode,
@@ -134,8 +152,15 @@ export class App {
                 windIndicatorEnabled: this.settings.windIndicatorEnabled,
                 thermalDriftEnabled: this.settings.thermalDriftEnabled,
                 thermalDriftFactor: this.settings.thermalDriftFactor,
+                windRandomEnabled: this.settings.windRandomEnabled,
             },
-            mapId: selection.mapId,
+            background: {
+                wmtsEnabled: this.settings.wmtsEnabled,
+                wmtsLayer: this.settings.wmtsLayer,
+                wmtsOpacity: this.settings.wmtsOpacity,
+            },
+            mapDefinition,
+            trainingStage: selection.trainingStage,
         });
 
         this.game = game;
@@ -187,6 +212,12 @@ export class App {
                 windIndicatorEnabled: this.settings.windIndicatorEnabled,
                 thermalDriftEnabled: this.settings.thermalDriftEnabled,
                 thermalDriftFactor: this.settings.thermalDriftFactor,
+                windRandomEnabled: this.settings.windRandomEnabled,
+            });
+            this.game.setBackgroundSettings({
+                wmtsEnabled: this.settings.wmtsEnabled,
+                wmtsLayer: this.settings.wmtsLayer,
+                wmtsOpacity: this.settings.wmtsOpacity,
             });
         }
         if (this.pauseOverlay) {

@@ -80,6 +80,24 @@ body {
     gap: 20px;
 }
 
+.screen-settings .card {
+    max-height: 86vh;
+}
+
+.settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.settings-content {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-right: 6px;
+}
+
 .card h1 {
     margin: 0;
     font-size: 30px;
@@ -311,6 +329,25 @@ select {
     height: 100%;
     display: block;
     background: #ffffff;
+}
+
+.attribution {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    font-size: 11px;
+    color: #4a433b;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 4px 8px;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.attribution.attribution-pause {
+    color: #ffffff;
+    background: rgba(20, 20, 20, 0.65);
+    z-index: 15;
 }
 
 @media (max-width: 720px) {

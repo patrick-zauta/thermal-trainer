@@ -21,4 +21,8 @@ export const defaultSettings: Settings = {
     windIndicatorEnabled: true,
     thermalDriftEnabled: false,
     thermalDriftFactor: 0.6,
+    windRandomEnabled: false,
+    wmtsEnabled: true,
+    wmtsLayer: "ch.swisstopo.pixelkarte-grau",
+    wmtsOpacity: 0.65,
 };

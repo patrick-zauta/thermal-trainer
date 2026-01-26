@@ -33,7 +33,7 @@ export type TargetZone = {
     radius: number;
 };
 
-export type MapId = "basis" | "ridge" | "valley" | "lake";
+export type MapId = "basis" | "ridge" | "valley" | "lake" | "random";
 
 export type MapDefinition = {
     id: MapId;

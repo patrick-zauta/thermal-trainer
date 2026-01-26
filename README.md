@@ -28,8 +28,17 @@ npm run dev
 - Turn Modell nutzt yaw, slip und bank fuer traegeres Kurvenverhalten, Vollkreis ca 13 Sekunden bei Trim.
 - Wind kann in Einstellungen aktiviert werden, Richtung ist die Downwind Richtung in Grad.
 - Thermik Drift kann optional aktiviert werden und folgt dem Wind mit Faktor.
+- Zufallswind erzeugt bei aktivem Wind eine zufaellige Richtung und Staerke pro Run.
 - Mehrere Karten mit Turnpoints und Zielbereich sind im Modus Auswahl verfuegbar.
 - Bei 0 m Hoehe erscheint Game Over, bei Zielerreichung ein Winner Screen, danach die Uebersicht.
+- Swisstopo Hintergrundkarte und AGL Anzeige sind integriert.
+- Dieses Kartenfeature wurde fuer Patrick Zauta implementiert.
+- Zufalls Modus erzeugt zufaellige Thermiken, Turnpoints und Ziel auf Knopfdruck.
+
+## Karte und Datenquellen
+- MapConfig befindet sich in `src/game/map/maps/ch_demo.ts` und kann fuer andere Gebiete angepasst werden.
+- WMTS Layer: `ch.swisstopo.pixelkarte-grau` oder `ch.swisstopo.pixelkarte-farbe`.
+- Hoehenabfrage via `https://api3.geo.admin.ch/rest/services/height`.
 
 ## Mobile Steuerung
 - Linker Slider: Bremse links

@@ -48,6 +48,19 @@ export const loadSettings = (): Settings => {
             typeof parsed.thermalDriftFactor === "number" && Number.isFinite(parsed.thermalDriftFactor)
                 ? clamp(parsed.thermalDriftFactor, 0, 1)
                 : defaultSettings.thermalDriftFactor;
+        const windRandomEnabled =
+            typeof parsed.windRandomEnabled === "boolean"
+                ? parsed.windRandomEnabled
+                : defaultSettings.windRandomEnabled;
+        const wmtsEnabled = typeof parsed.wmtsEnabled === "boolean" ? parsed.wmtsEnabled : defaultSettings.wmtsEnabled;
+        const wmtsLayer =
+            parsed.wmtsLayer === "ch.swisstopo.pixelkarte-grau" || parsed.wmtsLayer === "ch.swisstopo.pixelkarte-farbe"
+                ? parsed.wmtsLayer
+                : defaultSettings.wmtsLayer;
+        const wmtsOpacity =
+            typeof parsed.wmtsOpacity === "number" && Number.isFinite(parsed.wmtsOpacity)
+                ? clamp(parsed.wmtsOpacity, 0, 1)
+                : defaultSettings.wmtsOpacity;
 
         return {
             audioEnabled,
@@ -60,6 +73,10 @@ export const loadSettings = (): Settings => {
             windIndicatorEnabled,
             thermalDriftEnabled,
             thermalDriftFactor,
+            windRandomEnabled,
+            wmtsEnabled,
+            wmtsLayer,
+            wmtsOpacity,
         };
     } catch {
         return defaultSettings;

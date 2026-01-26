@@ -1,8 +1,8 @@
-import type { MapId } from "../data/mvpMap";
+import type { MapDefinition, MapId } from "../data/mvpMap";
 
 export type ScreenId = "home" | "mode" | "settings" | "game" | "summary";
 
-export type ModeId = "training" | "free";
+export type ModeId = "training" | "free" | "random";
 
 export type ThermalVisibility = "visible" | "rings" | "hidden";
 
@@ -15,6 +15,14 @@ export type WindSettings = {
     windIndicatorEnabled: boolean;
     thermalDriftEnabled: boolean;
     thermalDriftFactor: number;
+    windRandomEnabled: boolean;
+};
+
+export type RandomMapSettings = {
+    thermalCount: number;
+    turnpointCount: number;
+    strength: number;
+    targetRadius: number;
 };
 
 export type Action =
@@ -39,12 +47,18 @@ export type Settings = {
     windIndicatorEnabled: boolean;
     thermalDriftEnabled: boolean;
     thermalDriftFactor: number;
+    windRandomEnabled: boolean;
+    wmtsEnabled: boolean;
+    wmtsLayer: string;
+    wmtsOpacity: number;
 };
 
 export type ModeSelection = {
     mode: ModeId;
     thermalVisibility: ThermalVisibility;
     mapId: MapId;
+    trainingStage: 1 | 2;
+    randomSettings: RandomMapSettings;
 };
 
 export type TrackSample = {
@@ -58,6 +72,7 @@ export type TrackSample = {
 export type RunSummary = {
     mode: ModeId;
     mapId: MapId;
+    mapDefinition: MapDefinition;
     durationSec: number;
     startAltitudeM: number;
     endAltitudeM: number;
