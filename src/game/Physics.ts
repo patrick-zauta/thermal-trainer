@@ -143,9 +143,7 @@ export class Physics {
         dt: number,
         targets: { leftTarget: number; rightTarget: number; speedbarTarget: number },
         map: Map,
-        time: number,
         wind: WindConfig,
-        aglM: number,
     ): Telemetry {
         this.state.leftBrake = moveTowards(this.state.leftBrake, targets.leftTarget, BRAKE_RAMP_RATE * dt);
         this.state.rightBrake = moveTowards(this.state.rightBrake, targets.rightTarget, BRAKE_RAMP_RATE * dt);
@@ -183,7 +181,7 @@ export class Physics {
             (stall ? STALL_SINK : 0) +
             (Math.abs(this.state.bankPhiRad) / PHI_LIMIT) * BANK_SINK;
 
-        const verticalAir = map.getVerticalAir(this.state.x, this.state.y, time, aglM);
+        const verticalAir = map.getVerticalAir(this.state.x, this.state.y);
         const vario = verticalAir - sinkGlider;
         const integratedVario = this.updateIntegratedVario(vario, dt);
 

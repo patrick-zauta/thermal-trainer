@@ -1,6 +1,6 @@
 import type { MapDefinition, MapId } from "../data/mvpMap";
 
-export type ScreenId = "home" | "mode" | "settings" | "game" | "summary";
+export type ScreenId = "home" | "mode" | "settings" | "game" | "summary" | "challenges";
 
 export enum FlightMode {
     Training = "training",
@@ -51,6 +51,11 @@ export type Settings = {
     touchControls: TouchControlsMode;
 };
 
+export type ChallengeSetup = {
+    scenarioId: string;
+    wind: WindConfig;
+};
+
 export type RunConfig = {
     mode: FlightMode;
     thermikVisibility: ThermikVisibility;
@@ -61,6 +66,7 @@ export type RunConfig = {
     targetAreaEnabled: boolean;
     individualConfig: IndividualConfig | null;
     randomSeed?: number;
+    scenarioId?: string;
 };
 
 export type TrackSample = {
@@ -69,6 +75,13 @@ export type TrackSample = {
     y: number;
     vario: number;
     altitudeM: number;
+};
+
+export type TurnpointEvent = {
+    name: string;
+    timeSec: number;
+    altitudeM: number;
+    minAltitudeM: number;
 };
 
 export type RunSummary = {
@@ -86,5 +99,7 @@ export type RunSummary = {
     stallCount: number;
     targetReached: boolean;
     samples: TrackSample[];
+    turnpointEvents: TurnpointEvent[];
     wind: WindConfig;
+    scenarioId?: string;
 };

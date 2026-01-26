@@ -3,6 +3,7 @@ import type { Settings } from "../types";
 
 type HomeScreenCallbacks = {
     onStart: () => void;
+    onChallenges: () => void;
     onSettings: () => void;
     onToggleAudio: (enabled: boolean) => void;
 };
@@ -40,9 +41,10 @@ export const createHomeScreen = (settings: Settings, callbacks: HomeScreenCallba
     buttonRow.className = "button-row";
 
     const startButton = createButton("Start", callbacks.onStart);
+    const challengesButton = createButton("Challenges", callbacks.onChallenges, "secondary");
     const settingsButton = createButton("Einstellungen", callbacks.onSettings, "secondary");
 
-    buttonRow.append(startButton, settingsButton);
+    buttonRow.append(startButton, challengesButton, settingsButton);
     card.append(title, description, author, audioRow, buttonRow);
     screen.append(card);
 

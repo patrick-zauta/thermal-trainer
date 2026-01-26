@@ -1,12 +1,5 @@
-import type {
-    FlightMode,
-    Keybindings,
-    RunConfig,
-    RunSummary,
-    ThermikVisibility,
-    TouchControlsMode,
-    WindConfig,
-} from "../app/types";
+import { ThermikVisibility } from "../app/types";
+import type { FlightMode, Keybindings, RunConfig, RunSummary, TouchControlsMode, WindConfig } from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
 import { InputManager } from "./input";
@@ -18,6 +11,10 @@ import { MapManager } from "./map/MapManager";
 import { chDemoMap } from "./map/maps/ch_demo";
 import { WmtsRenderer } from "./render/WmtsRenderer";
 import { TerrainHeightProvider } from "./terrain/TerrainHeightProvider";
+import { getScenarioById } from "./challenge/scenarios";
+import type { ChallengeScenario } from "./challenge/scenarios";
+import { TaskTracker } from "./challenge/TaskTracker";
+import type { TaskInfo } from "./challenge/TaskTracker";
 
 const MAX_DT = 0.05;
 type GameConfig = {
@@ -57,6 +54,7 @@ export class Game {
     };
     private readonly startX: number;
     private readonly startY: number;
+    private readonly startAltitudeOverride: number | null;
     private readonly mode: FlightMode;
     private readonly thermalVisibility: ThermikVisibility;
     private readonly targetAreaEnabled: boolean;
@@ -75,6 +73,9 @@ export class Game {
     private turnpoints: Turnpoint[] = [];
     private turnpointIndex = 0;
     private turnpointsReached: boolean[] = [];
+    private readonly challengeScenario: ChallengeScenario | null;
+    private readonly taskTracker: TaskTracker | null;
+    private taskInfo: TaskInfo | null = null;
     private time = 0;
     private lastTime = 0;
     private frameId: number | null = null;
@@ -90,16 +91,21 @@ export class Game {
         }
         this.ctx = context;
 
-        this.mapManager = new MapManager(chDemoMap);
         this.mapDefinition = config.mapDefinition;
-        this.map = new Map(this.mapDefinition);
-        const spawnWorld = this.mapManager.getSpawnWorld();
+        this.challengeScenario = getScenarioById(config.runConfig.scenarioId);
+        this.mapManager = new MapManager(this.challengeScenario?.mapConfig ?? chDemoMap);
+        this.map = new Map(
+            this.mapDefinition,
+            this.challengeScenario ? this.challengeScenario.thermalField : undefined,
+        );
+        const spawnWorld = this.challengeScenario ? this.challengeScenario.spawn : this.mapManager.getSpawnWorld();
         this.startX = spawnWorld.x;
         this.startY = spawnWorld.y;
+        this.startAltitudeOverride = this.challengeScenario ? this.challengeScenario.startAltitudeM : null;
         this.terrainProvider = new TerrainHeightProvider(this.mapManager);
         this.mode = config.runConfig.mode;
         this.thermalVisibility = config.runConfig.thermikVisibility;
-        this.targetAreaEnabled = config.runConfig.targetAreaEnabled;
+        this.targetAreaEnabled = this.challengeScenario ? true : config.runConfig.targetAreaEnabled;
         this.terrainEnabled = config.background.wmtsEnabled;
         const initialAltitude = this.resolveSpawnAltitude();
         this.physics = new Physics(this.startX, this.startY, initialAltitude);
@@ -118,6 +124,7 @@ export class Game {
         this.backgroundSettings = { ...config.background };
         this.turnpoints = this.map.getTurnpoints();
         this.turnpointsReached = new Array(this.turnpoints.length).fill(false);
+        this.taskTracker = this.challengeScenario ? new TaskTracker(this.challengeScenario) : null;
 
         this.input = new InputManager(canvas, config.keybindings, config.touchControls, {
             onFirstInput: () => this.audio.ensureStarted(),
@@ -149,6 +156,8 @@ export class Game {
         this.turnpointIndex = 0;
         this.turnpointsReached = new Array(this.turnpoints.length).fill(false);
         this.spawnAltitudePending = true;
+        this.taskTracker?.reset();
+        this.taskInfo = null;
         this.input.resetTargets();
         this.inputState = {
             leftBrakeTarget: 0,
@@ -227,7 +236,9 @@ export class Game {
             stallCount: this.stats.stallCount,
             targetReached: this.stats.targetReached,
             samples: this.stats.samples,
+            turnpointEvents: this.stats.turnpointEvents,
             wind: { ...this.activeWindSettings },
+            scenarioId: this.challengeScenario?.id,
         };
     }
 
@@ -250,7 +261,7 @@ export class Game {
         }
 
         if (!this.paused && this.endState === "none" && dt > 0) {
-            const aglForDrift = this.getAglForDrift();
+            this.map.update(dt, this.time, this.activeWindSettings);
             this.telemetry = this.physics.step(
                 dt,
                 {
@@ -259,9 +270,7 @@ export class Game {
                     speedbarTarget: this.inputState.speedbarPressed ? 1 : 0,
                 },
                 this.map,
-                this.time,
                 this.activeWindSettings,
-                aglForDrift,
             );
             this.audio.update(this.telemetry.vario, dt);
             this.updateTerrainData();
@@ -299,7 +308,7 @@ export class Game {
 
         this.map.render(this.ctx, this.transform, this.time, {
             visibility: this.thermalVisibility,
-            showLabels: this.thermalVisibility === "visible",
+            showLabels: this.challengeScenario ? true : this.thermalVisibility === ThermikVisibility.Visible,
             showTurnpoints: this.targetAreaEnabled,
             drawBackground: !this.backgroundSettings.wmtsEnabled || !this.terrainEnabled,
             completedTurnpoints: this.turnpointsReached,
@@ -323,6 +332,8 @@ export class Game {
             targetReached: this.stats.targetReached,
             debug: this.debugEnabled,
             touchControlsVisible: controlsVisible,
+            taskInfo: this.taskInfo ?? undefined,
+            taskCompletedText: this.challengeScenario && this.stats.targetReached ? "TASK ABGESCHLOSSEN" : undefined,
             nextTurnpoint: this.getNextTurnpointInfo(),
             turnpointProgress: this.getTurnpointProgress(),
             debugMetrics: {
@@ -453,7 +464,33 @@ export class Game {
                 this.endRun("gameover");
                 return;
             }
-            if (this.targetAreaEnabled) {
+            if (this.challengeScenario && this.taskTracker) {
+                const update = this.taskTracker.update(
+                    { x: this.physics.state.x, y: this.physics.state.y },
+                    this.physics.state.altitudeM,
+                );
+                this.taskInfo = this.taskTracker.getTaskInfo(
+                    { x: this.physics.state.x, y: this.physics.state.y },
+                    this.physics.state.headingRad,
+                );
+                if (update.reachedTurnpointIndex !== null) {
+                    const reached = this.turnpoints[update.reachedTurnpointIndex];
+                    if (reached) {
+                        this.turnpointsReached[update.reachedTurnpointIndex] = true;
+                        this.stats.turnpointEvents.push({
+                            name: reached.name,
+                            timeSec: this.stats.durationSec,
+                            altitudeM: this.physics.state.altitudeM,
+                            minAltitudeM: reached.minAltitudeM,
+                        });
+                    }
+                }
+                if (update.completed) {
+                    this.stats.targetReached = true;
+                    this.endRun("winner");
+                    return;
+                }
+            } else if (this.targetAreaEnabled) {
                 this.checkTurnpointProgress();
                 if (!this.stats.targetReached && this.turnpointIndex >= this.turnpoints.length) {
                     const target = this.map.getTarget();
@@ -494,6 +531,9 @@ export class Game {
     }
 
     private checkTurnpointProgress(): void {
+        if (this.challengeScenario) {
+            return;
+        }
         if (!this.targetAreaEnabled) {
             return;
         }
@@ -505,11 +545,20 @@ export class Game {
         const dy = this.physics.state.y - next.center.y;
         if (Math.hypot(dx, dy) <= next.radius && this.physics.state.altitudeM >= next.minAltitudeM) {
             this.turnpointsReached[this.turnpointIndex] = true;
+            this.stats.turnpointEvents.push({
+                name: next.name,
+                timeSec: this.stats.durationSec,
+                altitudeM: this.physics.state.altitudeM,
+                minAltitudeM: next.minAltitudeM,
+            });
             this.turnpointIndex += 1;
         }
     }
 
     private getNextTurnpointInfo(): { name: string; distanceM: number; bearingRad: number } | null {
+        if (this.challengeScenario) {
+            return null;
+        }
         if (!this.targetAreaEnabled) {
             return null;
         }
@@ -530,6 +579,9 @@ export class Game {
     }
 
     private getTurnpointProgress(): { completed: number; total: number } {
+        if (this.challengeScenario) {
+            return { completed: 0, total: 0 };
+        }
         if (!this.targetAreaEnabled) {
             return { completed: 0, total: 0 };
         }
@@ -557,6 +609,10 @@ export class Game {
     }
 
     private resolveSpawnAltitude(): number {
+        if (this.startAltitudeOverride !== null) {
+            this.spawnAltitudePending = false;
+            return this.startAltitudeOverride;
+        }
         if (!this.terrainEnabled) {
             this.spawnAltitudePending = false;
             return this.mapManager.getConfig().startAGL_m;
@@ -572,6 +628,10 @@ export class Game {
     }
 
     private applySpawnAltitudeIfReady(): void {
+        if (this.startAltitudeOverride !== null) {
+            this.spawnAltitudePending = false;
+            return;
+        }
         if (!this.terrainEnabled) {
             this.spawnAltitudePending = false;
             return;
@@ -588,17 +648,6 @@ export class Game {
             this.stats.maxAltitudeM = altitude;
         }
         this.spawnAltitudePending = false;
-    }
-
-    private getAglForDrift(): number {
-        if (!this.terrainEnabled) {
-            return Math.max(0, this.physics.state.altitudeM);
-        }
-        const terrain = this.terrainProvider.getHeightAtWorld(this.physics.state.x, this.physics.state.y);
-        if (terrain === null) {
-            return Math.max(0, this.physics.state.altitudeM);
-        }
-        return Math.max(0, this.physics.state.altitudeM - terrain);
     }
 
     private resolveWindSettings(settings: WindConfig): WindConfig {
@@ -645,6 +694,7 @@ const createStats = () => ({
     stallCount: 0,
     targetReached: false,
     samples: [] as RunSummary["samples"],
+    turnpointEvents: [] as RunSummary["turnpointEvents"],
 });
 
 const wrapSignedAngle = (value: number): number => {

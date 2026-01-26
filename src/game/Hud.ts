@@ -1,4 +1,5 @@
 import type { Telemetry } from "./Physics";
+import type { TaskInfo } from "./challenge/TaskTracker";
 
 type DebugMetrics = {
     dt: number;
@@ -39,6 +40,8 @@ type HudState = {
     targetReached: boolean;
     debug: boolean;
     touchControlsVisible: boolean;
+    taskInfo?: TaskInfo;
+    taskCompletedText?: string;
     nextTurnpoint: { name: string; distanceM: number; bearingRad: number } | null;
     turnpointProgress: { completed: number; total: number };
     debugMetrics: DebugMetrics;
@@ -100,6 +103,8 @@ export class Hud {
 
         if (state.stall) {
             this.drawCenteredBanner(ctx, width, height, "STALL WARNUNG", uiScale);
+        } else if (state.taskCompletedText) {
+            this.drawCenteredBanner(ctx, width, height, state.taskCompletedText, uiScale);
         } else if (state.targetReached) {
             this.drawCenteredBanner(ctx, width, height, "ZIEL ERREICHT", uiScale);
         }
@@ -311,7 +316,9 @@ export class Hud {
             5 * uiScale,
         );
 
-        if (state.nextTurnpoint) {
+        if (state.taskInfo) {
+            this.drawTaskIndicator(ctx, width, y, panelHeight, state.taskInfo, compact, uiScale);
+        } else if (state.nextTurnpoint) {
             this.drawTurnpointIndicator(ctx, width, y, panelHeight, state.nextTurnpoint, compact, uiScale);
         }
     }
@@ -488,6 +495,58 @@ export class Hud {
             ctx.textBaseline = "top";
             ctx.fillText(text, centerX, centerY + arrowSize * 0.6 + 4 * uiScale);
         }
+
+        ctx.restore();
+    }
+
+    private drawTaskIndicator(
+        ctx: CanvasRenderingContext2D,
+        width: number,
+        panelY: number,
+        panelHeight: number,
+        info: TaskInfo,
+        compact: boolean,
+        uiScale: number,
+    ): void {
+        const arrowSize = (compact ? 36 : 46) * uiScale;
+        const centerX = width / 2;
+        const centerY = panelY + panelHeight / 2;
+
+        ctx.save();
+        ctx.strokeStyle = "#2f5c8c";
+        ctx.lineWidth = 2 * uiScale;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, arrowSize * 0.6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (info.bearingRad !== null) {
+            const angle = info.bearingRad - Math.PI / 2;
+            const tailX = centerX - Math.cos(angle) * (arrowSize * 0.35);
+            const tailY = centerY - Math.sin(angle) * (arrowSize * 0.35);
+            const headX = centerX + Math.cos(angle) * (arrowSize * 0.55);
+            const headY = centerY + Math.sin(angle) * (arrowSize * 0.55);
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(headX, headY);
+            ctx.stroke();
+
+            const headSize = 4 * uiScale;
+            const leftAngle = angle + Math.PI * 0.75;
+            const rightAngle = angle - Math.PI * 0.75;
+            ctx.beginPath();
+            ctx.moveTo(headX, headY);
+            ctx.lineTo(headX + Math.cos(leftAngle) * headSize, headY + Math.sin(leftAngle) * headSize);
+            ctx.moveTo(headX, headY);
+            ctx.lineTo(headX + Math.cos(rightAngle) * headSize, headY + Math.sin(rightAngle) * headSize);
+            ctx.stroke();
+        }
+
+        const text = `${info.label} ${Math.round(info.distanceM)} m`;
+        ctx.fillStyle = "#2f5c8c";
+        ctx.font = `${(compact ? 12 : 14) * uiScale}px ${UI_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(text, centerX, centerY + arrowSize * 0.6 + 4 * uiScale);
 
         ctx.restore();
     }

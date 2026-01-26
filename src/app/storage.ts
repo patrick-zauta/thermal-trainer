@@ -1,9 +1,10 @@
 import { defaultKeybindings, defaultSettings } from "./defaults";
-import type { IndividualConfig, Keybindings, RunConfig, Settings, WindConfig } from "./types";
+import type { ChallengeSetup, IndividualConfig, Keybindings, RunConfig, Settings, WindConfig } from "./types";
 import { FlightMode, ThermikVisibility } from "./types";
 
 const SETTINGS_KEY = "thermal-trainer-settings-v1";
 const LAST_RUN_KEY = "thermal-trainer-last-run-v1";
+const LAST_CHALLENGE_KEY = "thermal-trainer-last-challenge-v1";
 
 const defaultWindConfig: WindConfig = {
     windEnabled: false,
@@ -31,6 +32,11 @@ const defaultRunConfig: RunConfig = {
     startWithTargetArea: true,
     targetAreaEnabled: true,
     individualConfig: null,
+};
+
+const defaultChallengeSetup: ChallengeSetup = {
+    scenarioId: "niesen-xc",
+    wind: defaultWindConfig,
 };
 
 export const loadSettings = (): Settings => {
@@ -135,6 +141,40 @@ export const saveLastRunSetup = (runConfig: RunConfig): void => {
 
     try {
         localStorage.setItem(LAST_RUN_KEY, JSON.stringify(runConfig));
+    } catch {
+        // Ignore storage errors.
+    }
+};
+
+export const loadLastChallengeSetup = (): ChallengeSetup => {
+    if (typeof localStorage === "undefined") {
+        return { ...defaultChallengeSetup, wind: { ...defaultChallengeSetup.wind } };
+    }
+
+    try {
+        const raw = localStorage.getItem(LAST_CHALLENGE_KEY);
+        if (!raw) {
+            return { ...defaultChallengeSetup, wind: { ...defaultChallengeSetup.wind } };
+        }
+        const parsed = JSON.parse(raw) as Partial<ChallengeSetup> | null;
+        if (!parsed || typeof parsed !== "object") {
+            return { ...defaultChallengeSetup, wind: { ...defaultChallengeSetup.wind } };
+        }
+        const scenarioId = typeof parsed.scenarioId === "string" ? parsed.scenarioId : defaultChallengeSetup.scenarioId;
+        const wind = mergeWindConfig(parsed.wind);
+        return { scenarioId, wind };
+    } catch {
+        return { ...defaultChallengeSetup, wind: { ...defaultChallengeSetup.wind } };
+    }
+};
+
+export const saveLastChallengeSetup = (setup: ChallengeSetup): void => {
+    if (typeof localStorage === "undefined") {
+        return;
+    }
+
+    try {
+        localStorage.setItem(LAST_CHALLENGE_KEY, JSON.stringify(setup));
     } catch {
         // Ignore storage errors.
     }
