@@ -1,10 +1,11 @@
 import type {
+    FlightMode,
     Keybindings,
-    ModeId,
+    RunConfig,
     RunSummary,
-    ThermalVisibility,
+    ThermikVisibility,
     TouchControlsMode,
-    WindSettings,
+    WindConfig,
 } from "../app/types";
 import { AudioVario } from "./AudioVario";
 import { Hud } from "./Hud";
@@ -12,25 +13,35 @@ import { InputManager } from "./input";
 import { Map, WorldTransform } from "./Map";
 import { Physics, Telemetry } from "./Physics";
 import type { ActionState } from "./input";
-import type { MapId, Turnpoint } from "../data/mvpMap";
-import { getMapDefinition } from "../data/mvpMap";
+import type { MapDefinition, Turnpoint } from "../data/mvpMap";
+import { MapManager } from "./map/MapManager";
+import { chDemoMap } from "./map/maps/ch_demo";
+import { WmtsRenderer } from "./render/WmtsRenderer";
+import { TerrainHeightProvider } from "./terrain/TerrainHeightProvider";
 
 const MAX_DT = 0.05;
 type GameConfig = {
-    mode: ModeId;
-    thermalVisibility: ThermalVisibility;
+    runConfig: RunConfig;
     keybindings: Keybindings;
     audioEnabled: boolean;
     masterVolume: number;
     touchControls: TouchControlsMode;
-    wind: WindSettings;
-    mapId: MapId;
+    background: {
+        wmtsEnabled: boolean;
+        wmtsLayer: string;
+        wmtsOpacity: number;
+    };
+    mapDefinition: MapDefinition;
 };
 
 export class Game {
     private readonly canvas: HTMLCanvasElement;
     private readonly ctx: CanvasRenderingContext2D;
     private readonly map: Map;
+    private readonly mapDefinition: MapDefinition;
+    private readonly mapManager: MapManager;
+    private readonly wmtsRenderer: WmtsRenderer;
+    private readonly terrainProvider: TerrainHeightProvider;
     private readonly input: InputManager;
     private readonly physics: Physics;
     private readonly hud: Hud;
@@ -46,9 +57,16 @@ export class Game {
     };
     private readonly startX: number;
     private readonly startY: number;
-    private readonly mode: ModeId;
-    private readonly thermalVisibility: ThermalVisibility;
-    private windSettings: WindSettings;
+    private readonly mode: FlightMode;
+    private readonly thermalVisibility: ThermikVisibility;
+    private readonly targetAreaEnabled: boolean;
+    private windSettings: WindConfig;
+    private activeWindSettings: WindConfig;
+    private backgroundSettings: { wmtsEnabled: boolean; wmtsLayer: string; wmtsOpacity: number };
+    private terrainEnabled = true;
+    private terrainMsl: number | null = null;
+    private aglM: number | null = null;
+    private spawnAltitudePending = true;
     private pauseCallback: ((paused: boolean) => void) | null = null;
     private paused = false;
     private debugEnabled = false;
@@ -56,6 +74,7 @@ export class Game {
     private endCallback: ((state: "winner" | "gameover") => void) | null = null;
     private turnpoints: Turnpoint[] = [];
     private turnpointIndex = 0;
+    private turnpointsReached: boolean[] = [];
     private time = 0;
     private lastTime = 0;
     private frameId: number | null = null;
@@ -71,10 +90,20 @@ export class Game {
         }
         this.ctx = context;
 
-        this.map = new Map(getMapDefinition(config.mapId));
-        this.startX = 200;
-        this.startY = this.map.worldHeight / 2;
-        this.physics = new Physics(this.startX, this.startY);
+        this.mapManager = new MapManager(chDemoMap);
+        this.mapDefinition = config.mapDefinition;
+        this.map = new Map(this.mapDefinition);
+        const spawnWorld = this.mapManager.getSpawnWorld();
+        this.startX = spawnWorld.x;
+        this.startY = spawnWorld.y;
+        this.terrainProvider = new TerrainHeightProvider(this.mapManager);
+        this.mode = config.runConfig.mode;
+        this.thermalVisibility = config.runConfig.thermikVisibility;
+        this.targetAreaEnabled = config.runConfig.targetAreaEnabled;
+        this.terrainEnabled = config.background.wmtsEnabled;
+        const initialAltitude = this.resolveSpawnAltitude();
+        this.physics = new Physics(this.startX, this.startY, initialAltitude);
+        this.wmtsRenderer = new WmtsRenderer(this.mapManager);
         this.hud = new Hud();
         this.audio = new AudioVario();
         this.audio.setEnabled(config.audioEnabled);
@@ -83,11 +112,12 @@ export class Game {
         this.telemetry = this.physics.telemetry;
         this.transform = { a: 1, b: 0, c: 0, d: 1, offsetX: 0, offsetY: 0 };
 
-        this.mode = config.mode;
-        this.thermalVisibility = config.thermalVisibility;
-        this.windSettings = { ...config.wind };
-        this.map.setWindSettings(this.windSettings);
+        this.windSettings = { ...config.runConfig.wind };
+        this.activeWindSettings = this.resolveWindSettings(this.windSettings);
+        this.map.setWindSettings(this.activeWindSettings);
+        this.backgroundSettings = { ...config.background };
         this.turnpoints = this.map.getTurnpoints();
+        this.turnpointsReached = new Array(this.turnpoints.length).fill(false);
 
         this.input = new InputManager(canvas, config.keybindings, config.touchControls, {
             onFirstInput: () => this.audio.ensureStarted(),
@@ -117,6 +147,8 @@ export class Game {
         this.paused = false;
         this.endState = "none";
         this.turnpointIndex = 0;
+        this.turnpointsReached = new Array(this.turnpoints.length).fill(false);
+        this.spawnAltitudePending = true;
         this.input.resetTargets();
         this.inputState = {
             leftBrakeTarget: 0,
@@ -125,7 +157,10 @@ export class Game {
             pausePressed: false,
             debugTogglePressed: false,
         };
-        this.physics.reset(this.startX, this.startY);
+        const initialAltitude = this.resolveSpawnAltitude();
+        this.activeWindSettings = this.resolveWindSettings(this.windSettings);
+        this.map.setWindSettings(this.activeWindSettings);
+        this.physics.reset(this.startX, this.startY, initialAltitude);
         this.telemetry = this.physics.telemetry;
         this.time = 0;
         this.lastTime = 0;
@@ -159,9 +194,14 @@ export class Game {
         this.input.setTouchMode(mode);
     }
 
-    public setWindSettings(settings: WindSettings): void {
+    public setWindSettings(settings: WindConfig): void {
         this.windSettings = { ...settings };
-        this.map.setWindSettings(this.windSettings);
+        this.activeWindSettings = this.resolveWindSettings(this.windSettings);
+        this.map.setWindSettings(this.activeWindSettings);
+    }
+
+    public setBackgroundSettings(settings: { wmtsEnabled: boolean; wmtsLayer: string; wmtsOpacity: number }): void {
+        this.backgroundSettings = { ...settings };
     }
 
     public setEndCallback(callback: (state: "winner" | "gameover") => void): void {
@@ -175,6 +215,7 @@ export class Game {
         return {
             mode: this.mode,
             mapId: this.map.getId(),
+            mapDefinition: this.mapDefinition,
             durationSec: this.stats.durationSec,
             startAltitudeM: this.stats.startAltitudeM,
             endAltitudeM: endAltitude,
@@ -186,7 +227,7 @@ export class Game {
             stallCount: this.stats.stallCount,
             targetReached: this.stats.targetReached,
             samples: this.stats.samples,
-            wind: { ...this.windSettings },
+            wind: { ...this.activeWindSettings },
         };
     }
 
@@ -209,6 +250,7 @@ export class Game {
         }
 
         if (!this.paused && this.endState === "none" && dt > 0) {
+            const aglForDrift = this.getAglForDrift();
             this.telemetry = this.physics.step(
                 dt,
                 {
@@ -218,9 +260,11 @@ export class Game {
                 },
                 this.map,
                 this.time,
-                this.windSettings,
+                this.activeWindSettings,
+                aglForDrift,
             );
             this.audio.update(this.telemetry.vario, dt);
+            this.updateTerrainData();
             this.updateStats(dt);
         } else {
             this.audio.update(0, dt);
@@ -247,18 +291,27 @@ export class Game {
         this.ctx.fillStyle = "#ffffff";
         this.ctx.fillRect(0, 0, width, height);
 
+        this.wmtsRenderer.draw(this.ctx, this.transform, width, {
+            enabled: this.backgroundSettings.wmtsEnabled && this.terrainEnabled,
+            layer: this.backgroundSettings.wmtsLayer,
+            opacity: this.backgroundSettings.wmtsOpacity,
+        });
+
         this.map.render(this.ctx, this.transform, this.time, {
             visibility: this.thermalVisibility,
             showLabels: this.thermalVisibility === "visible",
-            showTurnpoints: true,
+            showTurnpoints: this.targetAreaEnabled,
+            drawBackground: !this.backgroundSettings.wmtsEnabled || !this.terrainEnabled,
+            completedTurnpoints: this.turnpointsReached,
         });
-        if (this.mode === "training") {
+        if (this.targetAreaEnabled) {
             this.renderTarget();
         }
         this.renderGlider();
 
         this.hud.render(this.ctx, width, height, {
             altitudeM: this.physics.state.altitudeM,
+            aglM: this.terrainEnabled ? this.aglM : null,
             telemetry: this.telemetry,
             leftBrake: this.physics.state.leftBrake,
             rightBrake: this.physics.state.rightBrake,
@@ -396,19 +449,21 @@ export class Game {
         this.lastStall = this.telemetry.stall;
 
         if (this.endState === "none") {
-            if (altitude <= 0) {
+            if ((this.aglM !== null && this.aglM <= 0) || (this.aglM === null && altitude <= 0)) {
                 this.endRun("gameover");
                 return;
             }
-            this.checkTurnpointProgress();
-            if (this.mode === "training" && !this.stats.targetReached) {
-                const target = this.map.getTarget();
-                const dx = this.physics.state.x - target.center.x;
-                const dy = this.physics.state.y - target.center.y;
-                if (Math.hypot(dx, dy) <= target.radius) {
-                    this.stats.targetReached = true;
-                    this.endRun("winner");
-                    return;
+            if (this.targetAreaEnabled) {
+                this.checkTurnpointProgress();
+                if (!this.stats.targetReached && this.turnpointIndex >= this.turnpoints.length) {
+                    const target = this.map.getTarget();
+                    const dx = this.physics.state.x - target.center.x;
+                    const dy = this.physics.state.y - target.center.y;
+                    if (Math.hypot(dx, dy) <= target.radius) {
+                        this.stats.targetReached = true;
+                        this.endRun("winner");
+                        return;
+                    }
                 }
             }
         }
@@ -439,6 +494,9 @@ export class Game {
     }
 
     private checkTurnpointProgress(): void {
+        if (!this.targetAreaEnabled) {
+            return;
+        }
         const next = this.turnpoints[this.turnpointIndex];
         if (!next) {
             return;
@@ -446,11 +504,15 @@ export class Game {
         const dx = this.physics.state.x - next.center.x;
         const dy = this.physics.state.y - next.center.y;
         if (Math.hypot(dx, dy) <= next.radius && this.physics.state.altitudeM >= next.minAltitudeM) {
+            this.turnpointsReached[this.turnpointIndex] = true;
             this.turnpointIndex += 1;
         }
     }
 
     private getNextTurnpointInfo(): { name: string; distanceM: number; bearingRad: number } | null {
+        if (!this.targetAreaEnabled) {
+            return null;
+        }
         const next = this.turnpoints[this.turnpointIndex];
         if (!next) {
             return null;
@@ -468,10 +530,86 @@ export class Game {
     }
 
     private getTurnpointProgress(): { completed: number; total: number } {
+        if (!this.targetAreaEnabled) {
+            return { completed: 0, total: 0 };
+        }
         return {
-            completed: Math.min(this.turnpointIndex, this.turnpoints.length),
-            total: this.turnpoints.length,
+            completed: this.turnpointsReached.filter(Boolean).length + (this.stats.targetReached ? 1 : 0),
+            total: this.turnpoints.length + 1,
         };
+    }
+
+    private updateTerrainData(): void {
+        if (!this.terrainEnabled) {
+            this.terrainMsl = null;
+            this.aglM = null;
+            return;
+        }
+        if (this.spawnAltitudePending) {
+            this.applySpawnAltitudeIfReady();
+        }
+        this.terrainMsl = this.terrainProvider.getHeightAtWorld(this.physics.state.x, this.physics.state.y);
+        if (this.terrainMsl === null) {
+            this.aglM = null;
+        } else {
+            this.aglM = this.physics.state.altitudeM - this.terrainMsl;
+        }
+    }
+
+    private resolveSpawnAltitude(): number {
+        if (!this.terrainEnabled) {
+            this.spawnAltitudePending = false;
+            return this.mapManager.getConfig().startAGL_m;
+        }
+        const spawn = this.mapManager.getConfig().spawnLv95;
+        const terrain = this.terrainProvider.getHeightAtLv95(spawn.easting, spawn.northing);
+        if (terrain !== null) {
+            this.spawnAltitudePending = false;
+            return terrain + this.mapManager.getConfig().startAGL_m;
+        }
+        this.spawnAltitudePending = true;
+        return this.mapManager.getConfig().startAGL_m;
+    }
+
+    private applySpawnAltitudeIfReady(): void {
+        if (!this.terrainEnabled) {
+            this.spawnAltitudePending = false;
+            return;
+        }
+        const spawn = this.mapManager.getConfig().spawnLv95;
+        const terrain = this.terrainProvider.getHeightAtLv95(spawn.easting, spawn.northing);
+        if (terrain === null) {
+            return;
+        }
+        const altitude = terrain + this.mapManager.getConfig().startAGL_m;
+        this.physics.state.altitudeM = altitude;
+        this.stats.startAltitudeM = altitude;
+        if (altitude > this.stats.maxAltitudeM) {
+            this.stats.maxAltitudeM = altitude;
+        }
+        this.spawnAltitudePending = false;
+    }
+
+    private getAglForDrift(): number {
+        if (!this.terrainEnabled) {
+            return Math.max(0, this.physics.state.altitudeM);
+        }
+        const terrain = this.terrainProvider.getHeightAtWorld(this.physics.state.x, this.physics.state.y);
+        if (terrain === null) {
+            return Math.max(0, this.physics.state.altitudeM);
+        }
+        return Math.max(0, this.physics.state.altitudeM - terrain);
+    }
+
+    private resolveWindSettings(settings: WindConfig): WindConfig {
+        if (!settings.windEnabled) {
+            return {
+                ...settings,
+                windSpeedMps: 0,
+                windDirDeg: 0,
+            };
+        }
+        return { ...settings };
     }
 }
 

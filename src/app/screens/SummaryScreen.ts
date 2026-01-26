@@ -1,4 +1,5 @@
 import type { RunSummary } from "../types";
+import { FlightMode, ThermikVisibility } from "../types";
 import type { Map, WorldTransform } from "../../game/Map";
 import type { Screen } from "./types";
 
@@ -41,7 +42,7 @@ export const createSummaryScreen = (summary: RunSummary, map: Map, callbacks: Su
                   ),
               ]
             : []),
-        ...(summary.mode === "training"
+        ...(summary.mode !== FlightMode.FreeFlight
             ? [statRow("Ziel erreicht", summary.targetReached ? "ja" : "nein")]
             : []),
     );
@@ -106,7 +107,13 @@ const drawSummary = (canvas: HTMLCanvasElement, map: Map, summary: RunSummary): 
 
     const transform = createFitTransform(canvas.width, canvas.height, map.worldWidth, map.worldHeight);
     map.setWindSettings(summary.wind);
-    map.render(ctx, transform, summary.durationSec, { visibility: "visible", showLabels: false, showTurnpoints: true });
+    map.render(ctx, transform, summary.durationSec, {
+        visibility: ThermikVisibility.Visible,
+        showLabels: false,
+        showTurnpoints: true,
+        drawBackground: true,
+        completedTurnpoints: [],
+    });
 
     drawTrack(ctx, transform, summary);
 

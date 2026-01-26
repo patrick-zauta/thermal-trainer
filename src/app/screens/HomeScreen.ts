@@ -1,11 +1,13 @@
 import type { Screen } from "./types";
+import type { Settings } from "../types";
 
 type HomeScreenCallbacks = {
     onStart: () => void;
     onSettings: () => void;
+    onToggleAudio: (enabled: boolean) => void;
 };
 
-export const createHomeScreen = (callbacks: HomeScreenCallbacks): Screen => {
+export const createHomeScreen = (settings: Settings, callbacks: HomeScreenCallbacks): Screen => {
     const screen = document.createElement("div");
     screen.className = "screen screen-home";
 
@@ -22,6 +24,18 @@ export const createHomeScreen = (callbacks: HomeScreenCallbacks): Screen => {
     author.className = "muted";
     author.textContent = "von Patrick Zauta";
 
+    const audioRow = document.createElement("div");
+    audioRow.className = "row";
+
+    const audioLabel = document.createElement("span");
+    audioLabel.textContent = "Audio aktiv";
+
+    const audioToggle = document.createElement("input");
+    audioToggle.type = "checkbox";
+    audioToggle.checked = settings.audioEnabled;
+
+    audioRow.append(audioLabel, audioToggle);
+
     const buttonRow = document.createElement("div");
     buttonRow.className = "button-row";
 
@@ -29,8 +43,12 @@ export const createHomeScreen = (callbacks: HomeScreenCallbacks): Screen => {
     const settingsButton = createButton("Einstellungen", callbacks.onSettings, "secondary");
 
     buttonRow.append(startButton, settingsButton);
-    card.append(title, description, author, buttonRow);
+    card.append(title, description, author, audioRow, buttonRow);
     screen.append(card);
+
+    audioToggle.addEventListener("change", () => {
+        callbacks.onToggleAudio(audioToggle.checked);
+    });
 
     return { element: screen };
 };

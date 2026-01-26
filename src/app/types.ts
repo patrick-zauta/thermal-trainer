@@ -1,20 +1,36 @@
-import type { MapId } from "../data/mvpMap";
+import type { MapDefinition, MapId } from "../data/mvpMap";
 
 export type ScreenId = "home" | "mode" | "settings" | "game" | "summary";
 
-export type ModeId = "training" | "free";
+export enum FlightMode {
+    Training = "training",
+    FreeFlight = "free",
+    Individual = "individual",
+}
 
-export type ThermalVisibility = "visible" | "rings" | "hidden";
+export enum ThermikVisibility {
+    Visible = "visible",
+    Rings = "rings",
+    Hidden = "hidden",
+}
 
 export type TouchControlsMode = "auto" | "on" | "off";
 
-export type WindSettings = {
+export type WindConfig = {
     windEnabled: boolean;
     windSpeedMps: number;
     windDirDeg: number;
     windIndicatorEnabled: boolean;
     thermalDriftEnabled: boolean;
     thermalDriftFactor: number;
+};
+
+export type IndividualConfig = {
+    thermalCount: number;
+    sinkEnabled: boolean;
+    thermalDynamics: "low" | "medium" | "high";
+    turnpointCount: number;
+    targetRadius: number;
 };
 
 export type Action =
@@ -33,18 +49,18 @@ export type Settings = {
     masterVolume: number;
     keybindings: Keybindings;
     touchControls: TouchControlsMode;
-    windEnabled: boolean;
-    windSpeedMps: number;
-    windDirDeg: number;
-    windIndicatorEnabled: boolean;
-    thermalDriftEnabled: boolean;
-    thermalDriftFactor: number;
 };
 
-export type ModeSelection = {
-    mode: ModeId;
-    thermalVisibility: ThermalVisibility;
+export type RunConfig = {
+    mode: FlightMode;
+    thermikVisibility: ThermikVisibility;
+    trainingStageId: number | null;
     mapId: MapId;
+    wind: WindConfig;
+    startWithTargetArea: boolean;
+    targetAreaEnabled: boolean;
+    individualConfig: IndividualConfig | null;
+    randomSeed?: number;
 };
 
 export type TrackSample = {
@@ -56,8 +72,9 @@ export type TrackSample = {
 };
 
 export type RunSummary = {
-    mode: ModeId;
+    mode: FlightMode;
     mapId: MapId;
+    mapDefinition: MapDefinition;
     durationSec: number;
     startAltitudeM: number;
     endAltitudeM: number;
@@ -69,5 +86,5 @@ export type RunSummary = {
     stallCount: number;
     targetReached: boolean;
     samples: TrackSample[];
-    wind: WindSettings;
+    wind: WindConfig;
 };

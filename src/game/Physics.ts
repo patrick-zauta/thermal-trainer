@@ -1,5 +1,5 @@
 import { Map } from "./Map";
-import type { WindSettings } from "../app/types";
+import type { WindConfig } from "../app/types";
 
 export type FlightState = {
     x: number;
@@ -79,13 +79,13 @@ export class Physics {
     private varioHistory: Array<{ dt: number; vario: number }> = [];
     private varioHistoryTime = 0;
 
-    public constructor(startX: number, startY: number) {
+    public constructor(startX: number, startY: number, startAltitudeM: number) {
         this.state = {
             x: startX,
             y: startY,
             headingRad: 0,
             speedMps: 36 / 3.6,
-            altitudeM: 500,
+            altitudeM: startAltitudeM,
             leftBrake: 0,
             rightBrake: 0,
             speedbarAmount: 0,
@@ -123,12 +123,12 @@ export class Physics {
         };
     }
 
-    public reset(startX: number, startY: number): void {
+    public reset(startX: number, startY: number, startAltitudeM: number): void {
         this.state.x = startX;
         this.state.y = startY;
         this.state.headingRad = 0;
         this.state.speedMps = 36 / 3.6;
-        this.state.altitudeM = 500;
+        this.state.altitudeM = startAltitudeM;
         this.state.leftBrake = 0;
         this.state.rightBrake = 0;
         this.state.speedbarAmount = 0;
@@ -144,7 +144,8 @@ export class Physics {
         targets: { leftTarget: number; rightTarget: number; speedbarTarget: number },
         map: Map,
         time: number,
-        wind: WindSettings,
+        wind: WindConfig,
+        aglM: number,
     ): Telemetry {
         this.state.leftBrake = moveTowards(this.state.leftBrake, targets.leftTarget, BRAKE_RAMP_RATE * dt);
         this.state.rightBrake = moveTowards(this.state.rightBrake, targets.rightTarget, BRAKE_RAMP_RATE * dt);
@@ -182,7 +183,7 @@ export class Physics {
             (stall ? STALL_SINK : 0) +
             (Math.abs(this.state.bankPhiRad) / PHI_LIMIT) * BANK_SINK;
 
-        const verticalAir = map.getVerticalAir(this.state.x, this.state.y, time);
+        const verticalAir = map.getVerticalAir(this.state.x, this.state.y, time, aglM);
         const vario = verticalAir - sinkGlider;
         const integratedVario = this.updateIntegratedVario(vario, dt);
 
@@ -323,7 +324,7 @@ const toHeadingDeg = (headingRad: number): number => {
     return Math.round((deg + 360) % 360);
 };
 
-const getWindVector = (wind: WindSettings): { x: number; y: number } => {
+const getWindVector = (wind: WindConfig): { x: number; y: number } => {
     if (!wind.windEnabled || wind.windSpeedMps <= 0) {
         return { x: 0, y: 0 };
     }
