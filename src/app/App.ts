@@ -189,6 +189,9 @@ export class App {
             endOverlay.setVisible(true, state);
         });
 
+        if (this.settings.audioEnabled) {
+            game.ensureAudioStarted();
+        }
         game.start();
     }
 

@@ -12,35 +12,35 @@ export class AudioVario {
     private enabled = true;
 
     public ensureStarted(): void {
-        if (this.started) {
-            return;
-        }
-
         const AudioContextClass =
             window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!AudioContextClass) {
             return;
         }
 
-        const context = new AudioContextClass();
-        const oscillator = context.createOscillator();
-        const gainNode = context.createGain();
+        if (!this.started) {
+            const context = new AudioContextClass();
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
 
-        oscillator.type = "sine";
-        oscillator.frequency.value = 440;
-        gainNode.gain.value = 0;
+            oscillator.type = "sine";
+            oscillator.frequency.value = 440;
+            gainNode.gain.value = 0;
 
-        oscillator.connect(gainNode);
-        gainNode.connect(context.destination);
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
 
-        oscillator.start();
+            oscillator.start();
 
-        void context.resume();
+            this.context = context;
+            this.oscillator = oscillator;
+            this.gainNode = gainNode;
+            this.started = true;
+        }
 
-        this.context = context;
-        this.oscillator = oscillator;
-        this.gainNode = gainNode;
-        this.started = true;
+        if (this.context?.state === "suspended") {
+            void this.context.resume();
+        }
     }
 
     public setMasterVolume(volume: number): void {

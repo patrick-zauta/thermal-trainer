@@ -193,10 +193,17 @@ export class Game {
 
     public setAudioEnabled(enabled: boolean): void {
         this.audio.setEnabled(enabled);
+        if (enabled) {
+            this.audio.ensureStarted();
+        }
     }
 
     public setMasterVolume(volume: number): void {
         this.audio.setMasterVolume(volume);
+    }
+
+    public ensureAudioStarted(): void {
+        this.audio.ensureStarted();
     }
 
     public setTouchControlsMode(mode: TouchControlsMode): void {
@@ -319,6 +326,7 @@ export class Game {
         this.renderGlider();
 
         this.hud.render(this.ctx, width, height, {
+            dt,
             altitudeM: this.physics.state.altitudeM,
             aglM: this.terrainEnabled ? this.aglM : null,
             telemetry: this.telemetry,

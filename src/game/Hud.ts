@@ -27,6 +27,7 @@ type DebugMetrics = {
 };
 
 type HudState = {
+    dt: number;
     altitudeM: number;
     aglM: number | null;
     telemetry: Telemetry;
@@ -51,8 +52,13 @@ type HudState = {
 };
 
 const UI_FONT = "'Space Grotesk', 'Trebuchet MS', sans-serif";
+type VarioMode = "silent" | "climb" | "sink";
 
 export class Hud {
+    private varioMode: VarioMode = "silent";
+    private climbTimer = 0;
+    private sinkTimer = 0;
+
     public render(ctx: CanvasRenderingContext2D, width: number, height: number, state: HudState): void {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -308,13 +314,8 @@ export class Hud {
             y + panelHeight / 2,
         );
 
-        this.drawVarioDot(
-            ctx,
-            width - 18 * uiScale,
-            y + (compact ? 14 : 18) * uiScale,
-            state.telemetry.vario,
-            5 * uiScale,
-        );
+        const pulse = this.updateVarioPulse(state.paused ? 0 : state.telemetry.vario, state.dt);
+        this.drawVarioPulse(ctx, width - 18 * uiScale, y + (compact ? 14 : 18) * uiScale, pulse, 5 * uiScale);
 
         if (state.taskInfo) {
             this.drawTaskIndicator(ctx, width, y, panelHeight, state.taskInfo, compact, uiScale);
@@ -345,14 +346,62 @@ export class Hud {
         ctx.fillText(text, width / 2, y + bannerHeight / 2);
     }
 
-    private drawVarioDot(ctx: CanvasRenderingContext2D, x: number, y: number, vario: number, radius: number): void {
-        if (vario <= 0.2) {
+    private drawVarioPulse(
+        ctx: CanvasRenderingContext2D,
+        x: number,
+        y: number,
+        pulse: { alpha: number; mode: VarioMode },
+        radius: number,
+    ): void {
+        if (pulse.alpha <= 0) {
             return;
         }
-        ctx.fillStyle = "#e35b5b";
+        ctx.save();
+        ctx.globalAlpha *= pulse.alpha;
+        ctx.fillStyle = pulse.mode === "sink" ? "#5b7ee3" : "#e35b5b";
         ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.arc(x, y, radius * (0.8 + pulse.alpha * 0.2), 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
+    }
+
+    private updateVarioPulse(vario: number, dt: number): { alpha: number; mode: VarioMode } {
+        const nextMode = selectVarioMode(vario);
+        if (nextMode !== this.varioMode) {
+            this.varioMode = nextMode;
+            this.climbTimer = 0;
+            this.sinkTimer = 0;
+        }
+
+        if (dt <= 0) {
+            return { alpha: 0, mode: this.varioMode };
+        }
+
+        if (this.varioMode === "climb") {
+            const normalized = clamp((vario - 0.2) / (3.0 - 0.2), 0, 1);
+            const pipHz = lerp(1.5, 8, normalized);
+            const pipPeriod = 1 / pipHz;
+            this.climbTimer = (this.climbTimer + dt) % pipPeriod;
+
+            const attack = 0.01;
+            const sustain = 0.05;
+            const release = 0.03;
+            const pipDuration = attack + sustain + release;
+
+            if (this.climbTimer <= pipDuration) {
+                return { alpha: envelope(this.climbTimer, attack, sustain, release), mode: this.varioMode };
+            }
+            return { alpha: 0, mode: this.varioMode };
+        }
+
+        if (this.varioMode === "sink") {
+            const period = 1.0;
+            const onDuration = 0.6;
+            this.sinkTimer = (this.sinkTimer + dt) % period;
+            return { alpha: this.sinkTimer <= onDuration ? 1 : 0, mode: this.varioMode };
+        }
+
+        return { alpha: 0, mode: this.varioMode };
     }
 
     private drawDebugOverlay(
@@ -594,6 +643,37 @@ const selectVarioColor = (vario: number): string => {
 const formatSigned = (value: number): string => {
     const rounded = value.toFixed(1);
     return value >= 0 ? `+${rounded}` : rounded;
+};
+
+const selectVarioMode = (vario: number): VarioMode => {
+    if (vario > 0.2) {
+        return "climb";
+    }
+    if (vario < -1.1) {
+        return "sink";
+    }
+    return "silent";
+};
+
+const envelope = (time: number, attack: number, sustain: number, release: number): number => {
+    if (time <= attack) {
+        return time / attack;
+    }
+    if (time <= attack + sustain) {
+        return 1;
+    }
+    if (time <= attack + sustain + release) {
+        return 1 - (time - attack - sustain) / release;
+    }
+    return 0;
+};
+
+const lerp = (min: number, max: number, t: number): number => {
+    return min + (max - min) * t;
+};
+
+const clamp = (value: number, min: number, max: number): number => {
+    return Math.min(Math.max(value, min), max);
 };
 
 const radToDeg = (value: number): number => {
