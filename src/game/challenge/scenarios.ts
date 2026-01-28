@@ -44,8 +44,8 @@ const niesenThermals: ThermalComponent[] = [
     {
         baseCenter: { x: 570, y: 380 },
         wMax: 3.2,
-        sigmaX: 200,
-        sigmaY: 140,
+        sigmaX: 95,
+        sigmaY: 70,
         rotationRad: 0.25,
         driftFactor: 1.1,
         wobbleAmp: 10,
@@ -55,8 +55,8 @@ const niesenThermals: ThermalComponent[] = [
     {
         baseCenter: { x: 540, y: 340 },
         wMax: 2.6,
-        sigmaX: 180,
-        sigmaY: 120,
+        sigmaX: 85,
+        sigmaY: 60,
         rotationRad: -0.1,
         driftFactor: 0.9,
         wobbleAmp: 8,
@@ -66,8 +66,8 @@ const niesenThermals: ThermalComponent[] = [
     {
         baseCenter: { x: 520, y: 260 },
         wMax: 2.4,
-        sigmaX: 220,
-        sigmaY: 150,
+        sigmaX: 105,
+        sigmaY: 75,
         rotationRad: 0.45,
         driftFactor: 1.0,
         wobbleAmp: 9,
@@ -77,8 +77,8 @@ const niesenThermals: ThermalComponent[] = [
     {
         baseCenter: { x: 700, y: 470 },
         wMax: 2.2,
-        sigmaX: 210,
-        sigmaY: 160,
+        sigmaX: 100,
+        sigmaY: 80,
         rotationRad: -0.35,
         driftFactor: 0.95,
         wobbleAmp: 8,

@@ -116,13 +116,13 @@ export class TouchControls {
         const fillHeight = rect.height * clamp(target, 0, 1);
         const fillRect: Rect = {
             x: rect.x,
-            y: rect.y + rect.height - fillHeight,
+            y: rect.y,
             width: rect.width,
             height: fillHeight,
         };
         drawRoundedRect(ctx, fillRect, 12 * this.uiScale, "#2b2b2b", 0.35);
 
-        const knobY = rect.y + rect.height - fillHeight;
+        const knobY = rect.y + fillHeight;
         ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
         ctx.beginPath();
         ctx.arc(rect.x + rect.width / 2, knobY, rect.width * 0.3, 0, Math.PI * 2);

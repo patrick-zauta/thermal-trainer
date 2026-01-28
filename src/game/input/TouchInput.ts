@@ -164,7 +164,7 @@ export class TouchInput {
     }
 
     private valueFromSlider(y: number, rect: { y: number; height: number }): number {
-        const t = clamp(1 - (y - rect.y) / rect.height, 0, 1);
+        const t = clamp((y - rect.y) / rect.height, 0, 1);
         return t;
     }
 
